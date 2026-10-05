@@ -6,6 +6,11 @@
 
 모든 인터넷 접속을 기본 차단하고, 호스트명에 **허용 키워드**(`ebs`, `sevenedu`, `starplayer`, `jwplatform`, `kollus`, `cloudfront` …)가 포함된 도메인만 통과시킵니다.
 
+## 프로그램 실행 화면 예시
+차단 중인 EduGuard 메인 화면입니다. 허용 키워드, 도메인 테스트, 실시간 접속 로그를 확인할 수 있습니다.
+
+![EduGuard 프로그램 실행 화면 예시](assets/app_screen_example.png)
+
 ## 차단 화면 예시
 허용되지 않은 사이트에 접속하면 아래처럼 EduGuard 차단 페이지가 표시됩니다.
 

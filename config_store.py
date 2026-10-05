@@ -30,14 +30,6 @@ DEFAULT_KEYWORDS = [
 ]
 
 REMOTE_SUPPORT_KEYWORDS = [
-    # Chrome Remote Desktop / Google 로그인·API·CDN
-    "remotedesktop.google",
-    "chromoting",
-    "accounts.google",
-    "googleapis",
-    "gstatic",
-    "googleusercontent",
-    "google",
     # TeamViewer
     "teamviewer",
     "dyngate",

@@ -206,12 +206,12 @@ class UpdateCheckerTest(unittest.TestCase):
 
 
 class RemoteSupportModeTest(unittest.TestCase):
-    def test_remote_support_keywords_cover_common_tools(self):
+    def test_remote_support_keywords_cover_teamviewer_only(self):
         f = KeywordFilter(PRESET + REMOTE_SUPPORT_KEYWORDS)
-        self.assertTrue(f.is_allowed("remotedesktop.google.com"))
-        self.assertTrue(f.is_allowed("www.gstatic.com"))
         self.assertTrue(f.is_allowed("router.teamviewer.com"))
         self.assertTrue(f.is_allowed("server123.dyngate.com"))
+        self.assertFalse(f.is_allowed("remotedesktop.google.com"))
+        self.assertFalse(f.is_allowed("www.gstatic.com"))
 
 
 class FakeUpstream:

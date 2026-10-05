@@ -596,7 +596,7 @@ class App(tk.Tk):
         option(f2, "시간대 스케줄 사용", v_schedule,
                "아래 시간대 안에서는 자동 차단, 밖에서는 자동 해제됩니다. 일시 해제가 켜져 있으면 일시 해제가 우선입니다.")
         option(f2, "원격지원모드 허용", v_remote_support,
-               "Chrome Remote Desktop/TeamViewer 연결 유지를 위해 관련 도메인을 추가로 허용합니다. 사용 후 끄는 것을 권장합니다.")
+               "TeamViewer 연결 유지를 위해 teamviewer/dyngate 도메인을 추가로 허용합니다. 사용 후 끄는 것을 권장합니다.")
         row = ttk.Frame(f2)
         row.pack(fill="x", padx=10, pady=(8, 0))
         ttk.Label(row, text="차단 적용 시간대", width=22).pack(side="left")

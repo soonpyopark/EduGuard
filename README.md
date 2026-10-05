@@ -4,6 +4,8 @@
 
 개발자 사이트: [note4all.tistory.com](https://note4all.tistory.com)
 
+라이선스: [GNU GPL-3.0](LICENSE)
+
 모든 인터넷 접속을 기본 차단하고, 호스트명에 **허용 키워드**(`ebs`, `sevenedu`, `starplayer`, `jwplatform`, `kollus`, `cloudfront` …)가 포함된 도메인만 통과시킵니다.
 
 ## 프로그램 실행 화면 예시
@@ -125,3 +127,6 @@ EduGuard_1.0.0_YYMMDD_HHMMSS.msi
 - `cloudfront` 는 무관한 사이트들의 CDN 도메인(`*.cloudfront.net`)도 모두 허용합니다.
 - 프록시를 쓰지 않는 앱/VPN/Tor/브라우저 내 별도 프록시 설정은 막지 못합니다. 완전 차단이 필요하면 Windows 방화벽의 아웃바운드 규칙을 병행하세요.
 - HTTPS 는 도메인만 확인하며 URL 경로·내용은 검사하지 않습니다.
+
+## 라이선스
+이 프로젝트는 [GNU General Public License v3.0](LICENSE)에 따라 배포됩니다.

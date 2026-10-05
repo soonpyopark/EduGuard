@@ -2,7 +2,14 @@
 
 현재 버전: **1.0.0**
 
+개발자 사이트: [note4all.tistory.com](https://note4all.tistory.com)
+
 모든 인터넷 접속을 기본 차단하고, 호스트명에 **허용 키워드**(`ebs`, `sevenedu`, `starplayer`, `jwplatform`, `kollus`, `cloudfront` …)가 포함된 도메인만 통과시킵니다.
+
+## 차단 화면 예시
+허용되지 않은 사이트에 접속하면 아래처럼 EduGuard 차단 페이지가 표시됩니다.
+
+![EduGuard 차단 화면 예시](assets/blocked_screen_example.png)
 
 ## 실행
 ```powershell

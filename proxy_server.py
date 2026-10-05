@@ -222,7 +222,7 @@ class _Handler(socketserver.BaseRequestHandler):
             client.sendall(proxy.block_page(host))
         except OSError:
             proxy._emit("ERROR", host, "연결 실패")
-            client.sendall(_simple_response(502, "Bad Gateway", "Upstream connection failed"))
+            client.sendall(_simple_response(502, "Bad Gateway", "상위 서버 연결에 실패했습니다."))
         return None
 
     def _handle_connect(self, proxy, client, target: str, rest: bytes) -> Optional[socket.socket]:
@@ -243,7 +243,7 @@ class _Handler(socketserver.BaseRequestHandler):
 
     def _handle_http(self, proxy, client, method, target, version, header_lines, rest) -> Optional[socket.socket]:
         if not target.lower().startswith("http://"):
-            client.sendall(_simple_response(400, "Bad Request", "This is a filtering proxy."))
+            client.sendall(_simple_response(400, "Bad Request", "EduGuard 필터링 프록시입니다."))
             return None
         u = urlsplit(target)
         host = u.hostname or ""

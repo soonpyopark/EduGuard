@@ -35,10 +35,15 @@ EduGuard_1.0.0_YYMMDD_HHMMSS.msi
 
 예: `msi\EduGuard_1.0.0_261005_110236.msi`
 
-## 업데이트 확인
-프로그램 시작 후 백그라운드에서 업데이트 manifest를 확인합니다. 기본 URL은 비워 두었고, 배포 서버가 정해지면 `version.py`의 `UPDATE_MANIFEST_URL`을 설정하거나 실행 환경변수 `EDUGUARD_UPDATE_URL`로 지정할 수 있습니다.
+## 제거 / 업데이트
+- 새 MSI를 기존 설치 위에 실행하면 같은 버전(`1.0.0`)이어도 업데이트 설치됩니다.
+- MSI 제거 시 `--uninstall-cleanup` 정리 작업이 실행되어 시스템 프록시를 원복하고, 자동 실행 작업과 `config.json`, `proxy_backup.json`, `logs` 같은 실행 중 생성 파일을 삭제합니다.
+- 제거 전 EduGuard 창에서 차단을 해제하고 프로그램을 종료하는 것을 권장합니다. 강제 종료된 상태에서도 정리 작업은 가능한 범위에서 수행됩니다.
 
-Manifest 예시:
+## 업데이트 확인
+프로그램 시작 후 백그라운드에서 업데이트 매니페스트를 확인합니다. 기본 URL은 비워 두었고, 배포 서버가 정해지면 `version.py`의 `UPDATE_MANIFEST_URL`을 설정하거나 실행 환경변수 `EDUGUARD_UPDATE_URL`로 지정할 수 있습니다.
+
+매니페스트 예시:
 
 ```json
 {
@@ -54,8 +59,8 @@ Manifest 예시:
 | 파일 | 역할 |
 |---|---|
 | `main.py` | Tkinter GUI, UAC 상승, 비밀번호 확인, 전체 제어 |
-| `version.py` | 앱 이름/버전(`1.0.0`)/업데이트 manifest URL |
-| `update_checker.py` | 시작 시 업데이트 manifest 확인 |
+| `version.py` | 앱 이름/버전(`1.0.0`)/업데이트 매니페스트 URL |
+| `update_checker.py` | 시작 시 업데이트 매니페스트 확인 |
 | `proxy_server.py` | 로컬 필터링 프록시 (HTTP + HTTPS CONNECT, 인증서 불필요) |
 | `system_proxy.py` | 레지스트리 시스템 프록시 설정/원복, 변경 감시(2초) |
 | `config_store.py` | `config.json` 저장 (PBKDF2 비밀번호 해시 + HMAC 무결성 + 파일 ACL) |
@@ -66,7 +71,7 @@ Manifest 예시:
 | `assets/eduguard.ico`, `eduguard.png` | 앱 아이콘 (`icon_guide.jpg` 가이드에서 생성). 창/작업표시줄/대화상자에 적용 |
 | `test_eduguard.py` | 단위/통합 테스트 |
 
-> exe 로 빌드할 때: `pyinstaller --onefile --noconsole --icon assets/eduguard.ico --add-data "assets;assets" main.py`
+> 실행 파일로 빌드할 때: `pyinstaller --onefile --noconsole --icon assets/eduguard.ico --add-data "assets;assets" main.py`
 
 ## 환경설정 (하단 `⚙ 환경설정`, 부모님 비밀번호 필요)
 설정 창은 `시작`, `차단`, `네트워크`, `로그`, `보안` 탭으로 나뉩니다.
@@ -107,11 +112,11 @@ Manifest 예시:
 ## 권장 운영 방법 (중요)
 - **자녀 계정은 반드시 '표준 사용자'** 로 두세요. 관리자 계정이면 프로그램 종료·설정 변경·레지스트리 수정이 모두 가능해 우회됩니다.
 - 프로그램은 `C:\EduGuard` 처럼 자녀가 쓰기 불가능한 폴더에 설치하세요. (사용자 폴더에 두면 파일 삭제 가능)
-- 프로그램이 강제 종료돼도 프록시 설정은 죽은 포트를 가리키므로 **인터넷은 계속 차단**(fail-closed)됩니다. 복구는 `--restore`.
+- 프로그램이 강제 종료돼도 프록시 설정은 죽은 포트를 가리키므로 **인터넷은 계속 차단**됩니다. 복구는 `--restore`.
 - 부팅 시 자동 실행은 환경설정에서 켜세요. 직접 작업 스케줄러를 만드는 것보다 현재 설치 경로와 exe/script 실행 방식을 자동으로 반영합니다.
 
 ## 한계 (키워드 방식의 본질적 특성)
-- 키워드는 **부분 문자열 매칭**이라 `ebs` 는 `webserver.com`, `forebs.net` 같은 도메인도 허용합니다. 가능하면 `ebsi.co.kr` 처럼 구체적으로 등록하세요. (현재 기본 preset 은 요청 사양 그대로)
+- 키워드는 **부분 문자열 매칭**이라 `ebs` 는 `webserver.com`, `forebs.net` 같은 도메인도 허용합니다. 가능하면 `ebsi.co.kr` 처럼 구체적으로 등록하세요. (현재 기본값은 요청 사양 그대로)
 - `cloudfront` 는 무관한 사이트들의 CDN 도메인(`*.cloudfront.net`)도 모두 허용합니다.
 - 프록시를 쓰지 않는 앱/VPN/Tor/브라우저 내 별도 프록시 설정은 막지 못합니다. 완전 차단이 필요하면 Windows 방화벽의 아웃바운드 규칙을 병행하세요.
 - HTTPS 는 도메인만 확인하며 URL 경로·내용은 검사하지 않습니다.

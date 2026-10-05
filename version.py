@@ -1,4 +1,4 @@
-"""EduGuard version/update constants."""
+"""EduGuard 버전/업데이트 상수."""
 
 APP_NAME = "EduGuard"
 APP_VERSION = "1.0.0"

@@ -12,6 +12,7 @@ import getpass
 import glob
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -932,6 +933,32 @@ def restore_cli() -> None:
     input("Enter 키를 누르면 창이 닫힙니다...")  # UAC 로 뜬 새 콘솔이 바로 닫히지 않게
 
 
+def uninstall_cleanup() -> None:
+    """MSI 제거 시 가능한 범위에서 런타임 잔여물과 시스템 설정을 정리한다."""
+    try:
+        SystemProxy(BACKUP_PATH).disable()
+    except Exception:
+        pass
+    try:
+        startup.unregister()
+    except Exception:
+        pass
+    try:
+        with open(WATCHDOG_FLAG_PATH, "w", encoding="utf-8") as f:
+            f.write("uninstall")
+    except OSError:
+        pass
+    for path in (CONFIG_PATH, CONFIG_PATH + ".bak", BACKUP_PATH, WATCHDOG_FLAG_PATH):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    try:
+        shutil.rmtree(LOG_DIR)
+    except OSError:
+        pass
+
+
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "--watchdog-child":
         raise SystemExit(watchdog.main([sys.argv[0]] + sys.argv[2:]))
@@ -941,6 +968,10 @@ def main() -> None:
         sys.exit(1)
 
     args = set(sys.argv[1:])
+    if "--uninstall-cleanup" in args:
+        uninstall_cleanup()
+        return
+
     if "--no-admin" not in args and not is_admin():
         if relaunch_as_admin():
             sys.exit(0)

@@ -4,21 +4,21 @@ __pycache__/
 .venv/
 venv/
 
-# Local EduGuard runtime state
+# EduGuard 로컬 실행 상태
 config.json
 config.json.bak
 proxy_backup.json
 watchdog_normal_exit.flag
 logs/
 
-# Build artifacts
+# 빌드 산출물
 build/
 dist/
 *.spec
 msi/*.msi
 msi/*.wixpdb
 
-# OS/editor noise
+# 운영체제/편집기 임시 파일
 .DS_Store
 Thumbs.db
 .idea/

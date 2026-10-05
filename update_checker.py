@@ -1,6 +1,6 @@
-"""시작 시 업데이트 manifest 를 확인하는 작은 클라이언트.
+"""시작 시 업데이트 매니페스트를 확인하는 작은 클라이언트.
 
-Manifest 예시(JSON):
+매니페스트 예시(JSON):
 {
   "version": "1.0.1",
   "url": "https://example.com/EduGuard_1.0.1.msi",

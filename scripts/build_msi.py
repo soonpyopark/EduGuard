@@ -1,6 +1,6 @@
-"""Build EduGuard executable and MSI installer.
+"""EduGuard 실행 파일과 MSI 설치 파일을 생성한다.
 
-Output:
+출력:
   msi/EduGuard_1.0.0_YYMMDD_HHMMSS.msi
 """
 from __future__ import annotations
@@ -114,13 +114,22 @@ def write_wxs(path: Path, exe_path: Path) -> None:
               Version="{APP_VERSION}"
               UpgradeCode="{{{UPGRADE_CODE}}}"
               Scope="perMachine">
-            <SummaryInformation Description="{PROJECT_NAME} installer" Manufacturer="{MANUFACTURER}" />
+            <SummaryInformation Description="{PROJECT_NAME} 설치 관리자" Manufacturer="{MANUFACTURER}" />
             <MajorUpgrade
                 AllowSameVersionUpgrades="yes"
-                DowngradeErrorMessage="A newer version of {PROJECT_NAME} is already installed." />
+                DowngradeErrorMessage="이미 더 높은 버전의 {PROJECT_NAME}이(가) 설치되어 있습니다." />
             <MediaTemplate EmbedCab="yes" />
             <Icon Id="AppIcon.ico" SourceFile="{icon_path}" />
             <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+            <CustomAction Id="EduGuardUninstallCleanup"
+                          FileRef="EduGuardExe"
+                          ExeCommand="--uninstall-cleanup"
+                          Execute="deferred"
+                          Impersonate="no"
+                          Return="ignore" />
+            <InstallExecuteSequence>
+              <Custom Action="EduGuardUninstallCleanup" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />
+            </InstallExecuteSequence>
             <Feature Id="MainFeature" Title="{PROJECT_NAME}" Level="1">
               <ComponentGroupRef Id="AppComponents" />
             </Feature>
@@ -172,7 +181,7 @@ def build_msi(exe: Path) -> Path:
 def main() -> int:
     exe = build_exe()
     msi = build_msi(exe)
-    print(f"\nMSI created: {msi}")
+    print(f"\nMSI 생성 완료: {msi}")
     return 0
 
 

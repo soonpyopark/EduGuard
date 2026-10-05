@@ -22,11 +22,17 @@ from typing import Iterable, List, Optional
 DEFAULT_KEYWORDS = [
     "ebs",
     "sevenedu",
+    "starplayer",
+    "axissoft",
+    "jwplatform",
+    "akamaized",
+    "cloudfront",
+    "cdnetworks",
+    "kollus",
+    "starplayerplus",
     "megastudy",
     "etoos",
     "mimacstudy",
-    "kollus",
-    "cloudfront",
 ]
 
 REMOTE_SUPPORT_KEYWORDS = [
@@ -36,13 +42,14 @@ REMOTE_SUPPORT_KEYWORDS = [
 ]
 
 DEFAULT_PORT = 8899
+DEFAULT_KEYWORDS_REVISION = 2
 DEFAULT_BLOCK_MESSAGE = "허용된 학습 사이트가 아닙니다."
 SETTING_KEYS = (
     "port", "auto_start", "run_at_startup", "start_in_tray", "close_to_tray",
     "schedule_enabled", "schedule_start", "schedule_end", "temp_unlock_minutes",
     "watchdog_enabled", "log_to_file", "log_retention_days", "block_message",
     "guard_interval", "tray_notifications", "password_max_fails", "password_lockout_seconds",
-    "audit_enabled", "remote_support_enabled",
+    "audit_enabled", "remote_support_enabled", "suppress_repeated_logs", "repeat_log_window_seconds",
 )
 PBKDF2_ITERATIONS = 200_000
 MIN_KEYWORD_LEN = 3
@@ -124,6 +131,7 @@ class ConfigStore:
     def _default_data() -> dict:
         return {
             "keywords": list(DEFAULT_KEYWORDS),
+            "default_keywords_revision": DEFAULT_KEYWORDS_REVISION,
             "port": DEFAULT_PORT,
             "auto_start": True,         # 프로그램 실행 시 자동으로 차단 시작
             "run_at_startup": False,    # Windows 시작(로그온) 시 자동 실행
@@ -143,6 +151,8 @@ class ConfigStore:
             "password_lockout_seconds": 30,
             "audit_enabled": True,
             "remote_support_enabled": False,
+            "suppress_repeated_logs": True,
+            "repeat_log_window_seconds": 30,
             "pw_salt": "",
             "pw_hash": "",
             "pw_iter": PBKDF2_ITERATIONS,
@@ -164,6 +174,8 @@ class ConfigStore:
                 return None
             merged = self._default_data()
             merged.update(payload)
+            # 기존 설치본에는 이 키가 없으므로 0으로 보고, 새 기본 키워드를 1회 보강한다.
+            merged["default_keywords_revision"] = int(payload.get("default_keywords_revision", 0))
             if not isinstance(merged["keywords"], list):
                 return None
             return merged
@@ -181,6 +193,7 @@ class ConfigStore:
                 if data is not None:
                     self.tampered = True
                     self._data = data
+                    self._migrate_default_keywords()
                     self._save()  # 정상본으로 되돌림
                     return
                 # 변조/손상 + 백업 없음 → 기본값, 비밀번호 재설정 필요
@@ -188,6 +201,26 @@ class ConfigStore:
                 self._data = self._default_data()
                 return
             self._data = data
+            self._migrate_default_keywords()
+
+    def _migrate_default_keywords(self) -> None:
+        """기존 설치의 허용 목록에 새 기본 키워드를 1회 추가한다."""
+        try:
+            current_revision = int(self._data.get("default_keywords_revision", 0))
+        except (TypeError, ValueError):
+            current_revision = 0
+        if current_revision >= DEFAULT_KEYWORDS_REVISION:
+            return
+        keywords = list(self._data.get("keywords", []))
+        changed = False
+        for kw in DEFAULT_KEYWORDS:
+            if kw not in keywords:
+                keywords.append(kw)
+                changed = True
+        self._data["keywords"] = keywords
+        self._data["default_keywords_revision"] = DEFAULT_KEYWORDS_REVISION
+        if changed or current_revision != DEFAULT_KEYWORDS_REVISION:
+            self._save()
 
     def _save(self) -> None:
         with self._lock:
@@ -404,6 +437,16 @@ class ConfigStore:
         with self._lock:
             return bool(self._data.get("remote_support_enabled", False))
 
+    @property
+    def suppress_repeated_logs(self) -> bool:
+        with self._lock:
+            return bool(self._data.get("suppress_repeated_logs", True))
+
+    @property
+    def repeat_log_window_seconds(self) -> int:
+        with self._lock:
+            return self._bounded_int("repeat_log_window_seconds", 30, 5, 600)
+
     def _bounded_int(self, key: str, default: int, min_value: int, max_value: int) -> int:
         try:
             v = int(self._data.get(key, default))
@@ -429,12 +472,13 @@ class ConfigStore:
             elif key in ("schedule_start", "schedule_end"):
                 clean[key] = normalize_time(str(value))
             elif key in ("temp_unlock_minutes", "log_retention_days", "password_max_fails",
-                         "password_lockout_seconds"):
+                         "password_lockout_seconds", "repeat_log_window_seconds"):
                 ranges = {
                     "temp_unlock_minutes": (1, 480, "일시 해제 시간은 1 ~ 480분 사이여야 합니다."),
                     "log_retention_days": (1, 365, "로그 보관 기간은 1 ~ 365일 사이여야 합니다."),
                     "password_max_fails": (1, 20, "비밀번호 실패 허용 횟수는 1 ~ 20회 사이여야 합니다."),
                     "password_lockout_seconds": (5, 3600, "비밀번호 잠금 시간은 5 ~ 3600초 사이여야 합니다."),
+                    "repeat_log_window_seconds": (5, 600, "반복 로그 숨김 시간은 5 ~ 600초 사이여야 합니다."),
                 }
                 try:
                     iv = int(value)

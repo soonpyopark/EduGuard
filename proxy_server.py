@@ -23,6 +23,7 @@ from urllib.parse import urlsplit
 MAX_HEAD_BYTES = 64 * 1024
 IDLE_TIMEOUT = 120  # 초: 양방향 무통신 시 연결 종료
 CONNECT_TIMEOUT = 10
+TRUSTED_LOCAL_HOSTS = {"localhost.axissoft.co.kr"}
 
 _HOP_HEADERS = {
     b"proxy-connection", b"connection", b"keep-alive", b"proxy-authorization",
@@ -93,14 +94,19 @@ def _split_host_port(target: str, default_port: int) -> Tuple[str, int]:
     return target, default_port
 
 
-def default_connect(host: str, port: int) -> socket.socket:
+def _is_trusted_local_host(host: str, trusted_hosts: Iterable[str]) -> bool:
+    return KeywordFilter.normalize_host(host) in {KeywordFilter.normalize_host(h) for h in trusted_hosts}
+
+
+def default_connect(host: str, port: int, trusted_local_hosts: Iterable[str] = ()) -> socket.socket:
     """DNS 조회 후 공인 IP 로만 연결한다."""
     infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     last_err: Optional[Exception] = None
     saw_public = False
+    allow_local = _is_trusted_local_host(host, trusted_local_hosts)
     for family, socktype, proto, _, sockaddr in infos:
         try:
-            if not ipaddress.ip_address(sockaddr[0]).is_global:
+            if not ipaddress.ip_address(sockaddr[0]).is_global and not allow_local:
                 continue
         except ValueError:
             continue
@@ -286,12 +292,14 @@ class FilterProxy:
         on_event: Optional[Callable[[dict], None]] = None,
         connect_func: Optional[Callable[[str, int], socket.socket]] = None,
         block_message: str = "허용된 학습 사이트가 아닙니다.",
+        trusted_local_hosts: Iterable[str] = TRUSTED_LOCAL_HOSTS,
     ):
         self.filter = KeywordFilter(keywords)
         self.host = host
         self.port = port
         self.on_event = on_event
-        self.connect = connect_func or default_connect
+        self._connect_func = connect_func
+        self.trusted_local_hosts = tuple(trusted_local_hosts)
         self.block_message = block_message
         self.allowed_count = 0
         self.blocked_count = 0
@@ -304,6 +312,11 @@ class FilterProxy:
 
     def block_page(self, host: str) -> bytes:
         return _block_page(host, self.block_message)
+
+    def connect(self, host: str, port: int) -> socket.socket:
+        if self._connect_func:
+            return self._connect_func(host, port)
+        return default_connect(host, port, self.trusted_local_hosts)
 
     @property
     def running(self) -> bool:

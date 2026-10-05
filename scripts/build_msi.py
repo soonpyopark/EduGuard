@@ -115,7 +115,9 @@ def write_wxs(path: Path, exe_path: Path) -> None:
               UpgradeCode="{{{UPGRADE_CODE}}}"
               Scope="perMachine">
             <SummaryInformation Description="{PROJECT_NAME} installer" Manufacturer="{MANUFACTURER}" />
-            <MajorUpgrade DowngradeErrorMessage="A newer version of {PROJECT_NAME} is already installed." />
+            <MajorUpgrade
+                AllowSameVersionUpgrades="yes"
+                DowngradeErrorMessage="A newer version of {PROJECT_NAME} is already installed." />
             <MediaTemplate EmbedCab="yes" />
             <Icon Id="AppIcon.ico" SourceFile="{icon_path}" />
             <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />

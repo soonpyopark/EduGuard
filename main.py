@@ -96,6 +96,8 @@ class App(tk.Tk):
         self.temp_unlock_until: float = 0.0
         self._watchdog_proc: subprocess.Popen | None = None
         self._last_log_prune = ""
+        self._recent_log_events: dict[tuple[str, str, str], float] = {}
+        self._log_follow_tail = True
         self._fails = 0
         self._locked_until = 0.0
 
@@ -340,6 +342,8 @@ class App(tk.Tk):
         lf = ttk.LabelFrame(self, text="실시간 접속 로그")
         lf.pack(fill="both", expand=True, **pad)
         self.log = ScrolledText(lf, height=10, state="disabled", font=("Consolas", 9))
+        self.log.configure(yscrollcommand=self._on_log_yview)
+        self.log.vbar.configure(command=self._on_log_scroll)
         self.log.pack(fill="both", expand=True, padx=6, pady=6)
         self.log.tag_config("ALLOW", foreground="#0a7d2c")
         self.log.tag_config("BLOCK", foreground="#c0392b")
@@ -385,15 +389,58 @@ class App(tk.Tk):
         self.proxy.filter.set_keywords(self._effective_keywords())  # 실행 중에도 즉시 반영
 
     def _append_log(self, ev: dict) -> None:
+        if self._should_suppress_log(ev):
+            return
+        follow_tail = self._log_follow_tail or self._log_is_at_bottom()
+        if not follow_tail:
+            self.log.mark_set("log_view_top", "@0,0")
+            self.log.mark_gravity("log_view_top", "left")
         self.log.configure(state="normal")
         self.log.insert("end", f"[{ev['time']}] {ev['action']:<5} {ev['host']}  ({ev['detail']})\n",
                         ev["action"])
         lines = int(self.log.index("end-1c").split(".")[0])
         if lines > MAX_LOG_LINES:
             self.log.delete("1.0", f"{lines - MAX_LOG_LINES}.0")
-        self.log.see("end")
+        if follow_tail:
+            self.log.see("end")
+            self._log_follow_tail = True
+        else:
+            self.log.yview("log_view_top")
+            self._log_follow_tail = False
         self.log.configure(state="disabled")
         self._write_access_log(ev)
+
+    def _log_is_at_bottom(self) -> bool:
+        try:
+            return self.log.yview()[1] >= 0.999
+        except tk.TclError:
+            return True
+
+    def _on_log_yview(self, first: str, last: str) -> None:
+        self.log.vbar.set(first, last)
+        try:
+            self._log_follow_tail = float(last) >= 0.999
+        except ValueError:
+            pass
+
+    def _on_log_scroll(self, *args) -> None:
+        self.log.yview(*args)
+        self.after_idle(lambda: setattr(self, "_log_follow_tail", self._log_is_at_bottom()))
+
+    def _should_suppress_log(self, ev: dict) -> bool:
+        """ALLOW/BLOCK 중복 로그만 숨긴다. 차단/허용 판단과 카운터에는 영향을 주지 않는다."""
+        if not self.cfg.suppress_repeated_logs or ev.get("action") not in ("ALLOW", "BLOCK"):
+            return False
+        now = time.time()
+        window = self.cfg.repeat_log_window_seconds
+        key = (str(ev.get("action", "")), str(ev.get("host", "")), str(ev.get("detail", "")))
+        last = self._recent_log_events.get(key)
+        self._recent_log_events[key] = now
+        cutoff = now - max(window * 2, 60)
+        for old_key, ts in list(self._recent_log_events.items()):
+            if ts < cutoff:
+                self._recent_log_events.pop(old_key, None)
+        return last is not None and now - last < window
 
     def _write_access_log(self, ev: dict) -> None:
         if not self.cfg.log_to_file:
@@ -535,6 +582,7 @@ class App(tk.Tk):
         v_schedule = tk.BooleanVar(value=self.cfg.schedule_enabled)
         v_watchdog = tk.BooleanVar(value=self.cfg.watchdog_enabled)
         v_log_file = tk.BooleanVar(value=self.cfg.log_to_file)
+        v_suppress_repeats = tk.BooleanVar(value=self.cfg.suppress_repeated_logs)
         v_tray_notify = tk.BooleanVar(value=self.cfg.tray_notifications)
         v_audit = tk.BooleanVar(value=self.cfg.audit_enabled)
         v_remote_support = tk.BooleanVar(value=self.cfg.remote_support_enabled)
@@ -543,6 +591,7 @@ class App(tk.Tk):
         v_schedule_end = tk.StringVar(value=self.cfg.schedule_end)
         v_unlock_minutes = tk.StringVar(value=str(self.cfg.temp_unlock_minutes))
         v_retention = tk.StringVar(value=str(self.cfg.log_retention_days))
+        v_repeat_window = tk.StringVar(value=str(self.cfg.repeat_log_window_seconds))
         v_block_message = tk.StringVar(value=self.cfg.block_message)
         v_guard_interval = tk.StringVar(value=str(self.cfg.guard_interval))
         v_pw_fails = tk.StringVar(value=str(self.cfg.password_max_fails))
@@ -618,6 +667,9 @@ class App(tk.Tk):
         labeled_entry(f3, "프록시 설정 감시 주기(초)", v_guard_interval, "0.5 ~ 30초. 짧을수록 임의 변경 복구가 빠릅니다.", 8)
 
         f4 = page("로그")
+        option(f4, "반복 로그 숨기기", v_suppress_repeats,
+               "같은 허용/차단 로그가 짧은 시간 안에 반복되면 하단 로그와 파일 로그에 다시 표시하지 않습니다.")
+        labeled_entry(f4, "반복 로그 숨김 시간(초)", v_repeat_window, "5 ~ 600초. 기본 30초", 8)
         option(f4, "접속 로그를 파일로 저장", v_log_file,
                "logs 폴더에 날짜별 파일로 저장합니다.")
         labeled_entry(f4, "접속 로그 보관 기간(일)", v_retention, "1 ~ 365일", 8)
@@ -657,6 +709,8 @@ class App(tk.Tk):
                     watchdog_enabled=v_watchdog.get(),
                     log_to_file=v_log_file.get(),
                     log_retention_days=v_retention.get().strip(),
+                    suppress_repeated_logs=v_suppress_repeats.get(),
+                    repeat_log_window_seconds=v_repeat_window.get().strip(),
                     block_message=v_block_message.get().strip(),
                     guard_interval=v_guard_interval.get().strip(),
                     tray_notifications=v_tray_notify.get(),

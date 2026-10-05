@@ -3,15 +3,19 @@
 네트워크/레지스트리를 건드리지 않는다. (업스트림은 로컬 가짜 서버로 대체)
 """
 import os
+import json
 import socket
 import tempfile
 import threading
 import unittest
 
 from config_store import ConfigError, ConfigStore, REMOTE_SUPPORT_KEYWORDS, normalize_keyword, normalize_time
-from proxy_server import FilterProxy, KeywordFilter
+from proxy_server import FilterProxy, KeywordFilter, TRUSTED_LOCAL_HOSTS, _is_trusted_local_host
 
-PRESET = ["ebs", "sevenedu", "megastudy", "etoos", "mimacstudy", "kollus", "cloudfront"]
+PRESET = [
+    "ebs", "sevenedu", "starplayer", "axissoft", "jwplatform", "akamaized", "cloudfront",
+    "cdnetworks", "kollus", "starplayerplus", "megastudy", "etoos", "mimacstudy",
+]
 
 
 class KeywordFilterTest(unittest.TestCase):
@@ -20,7 +24,7 @@ class KeywordFilterTest(unittest.TestCase):
 
     def test_allowed_domains(self):
         for host in ["www.ebsi.co.kr", "mid.ebs.co.kr", "ebs.co.kr", "ebs-cdn.com",
-                     "www.sevenedu.net", "cdn.sevenedu.net", "v.kollus.com",
+                     "www.sevenedu.net", "cdn.sevenedu.net", "content.jwplatform.com", "v.kollus.com",
                      "d1234.cloudfront.net", "WWW.EBS.CO.KR", "ebs.co.kr."]:
             self.assertTrue(self.f.is_allowed(host), host)
 
@@ -118,6 +122,8 @@ class ConfigStoreTest(unittest.TestCase):
         self.assertEqual(c.password_lockout_seconds, 30)
         self.assertTrue(c.audit_enabled)
         self.assertFalse(c.remote_support_enabled)
+        self.assertTrue(c.suppress_repeated_logs)
+        self.assertEqual(c.repeat_log_window_seconds, 30)
         c.set_password("1234")
         c.set_settings(run_at_startup=True, start_in_tray=True, close_to_tray=False,
                        auto_start=False, port="9000", schedule_enabled=True,
@@ -127,7 +133,8 @@ class ConfigStoreTest(unittest.TestCase):
                        block_message="공부 시간입니다.", guard_interval="1.5",
                        tray_notifications=False, password_max_fails="3",
                        password_lockout_seconds="60", audit_enabled=False,
-                       remote_support_enabled=True)
+                       remote_support_enabled=True, suppress_repeated_logs=False,
+                       repeat_log_window_seconds="45")
         c2 = ConfigStore(self.path)
         self.assertFalse(c2.tampered)
         self.assertTrue(c2.run_at_startup)
@@ -149,6 +156,8 @@ class ConfigStoreTest(unittest.TestCase):
         self.assertEqual(c2.password_lockout_seconds, 60)
         self.assertFalse(c2.audit_enabled)
         self.assertTrue(c2.remote_support_enabled)
+        self.assertFalse(c2.suppress_repeated_logs)
+        self.assertEqual(c2.repeat_log_window_seconds, 45)
 
     def test_settings_validation_is_atomic(self):
         c = ConfigStore(self.path)
@@ -162,7 +171,8 @@ class ConfigStoreTest(unittest.TestCase):
         for key, bad in [
             ("temp_unlock_minutes", "0"), ("log_retention_days", "366"),
             ("guard_interval", "0.1"), ("password_max_fails", "21"),
-            ("password_lockout_seconds", "4"), ("block_message", ""),
+            ("password_lockout_seconds", "4"), ("repeat_log_window_seconds", "4"),
+            ("block_message", ""),
         ]:
             with self.assertRaises(ConfigError, msg=key):
                 c.set_settings(**{key: bad})
@@ -175,6 +185,22 @@ class ConfigStoreTest(unittest.TestCase):
         self.assertEqual(c.keywords, ["ebs", "khanacademy"])
         with self.assertRaises(ConfigError):
             c.set_keywords(["com"])
+
+    def test_old_config_gets_new_default_keywords_once(self):
+        c = ConfigStore(self.path)
+        c.set_password("1234")
+        with open(self.path, encoding="utf-8") as f:
+            doc = json.load(f)
+        payload = doc["payload"]
+        payload["keywords"] = ["ebs", "sevenedu"]
+        payload.pop("default_keywords_revision", None)
+        doc = {"payload": payload, "mac": ConfigStore._mac(payload)}
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+
+        migrated = ConfigStore(self.path)
+        self.assertIn("jwplatform", migrated.keywords)
+        self.assertIn("axissoft", migrated.keywords)
 
 
 class StartupTaskTest(unittest.TestCase):
@@ -335,6 +361,13 @@ class ProxyTest(unittest.TestCase):
         self.assertEqual(self.proxy.allowed_count, allowed0 + 1)
         self.assertTrue(any(e["action"] == "BLOCK" and e["host"] == "www.google.com" for e in self.events))
         self.assertTrue(any(e["action"] == "ALLOW" and e["host"] == "www.ebs.co.kr" for e in self.events))
+
+
+class TrustedLocalHostTest(unittest.TestCase):
+    def test_axissoft_localhost_is_trusted(self):
+        self.assertTrue(_is_trusted_local_host("localhost.axissoft.co.kr", TRUSTED_LOCAL_HOSTS))
+        self.assertTrue(_is_trusted_local_host("LOCALHOST.AXISSOFT.CO.KR.", TRUSTED_LOCAL_HOSTS))
+        self.assertFalse(_is_trusted_local_host("localhost.example.com", TRUSTED_LOCAL_HOSTS))
 
 
 if __name__ == "__main__":

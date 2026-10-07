@@ -50,6 +50,7 @@ SETTING_KEYS = (
     "watchdog_enabled", "log_to_file", "log_retention_days", "block_message",
     "guard_interval", "tray_notifications", "password_max_fails", "password_lockout_seconds",
     "audit_enabled", "remote_support_enabled", "suppress_repeated_logs", "repeat_log_window_seconds",
+    "block_start_delay_seconds", "wait_for_starplayer", "starplayer_wait_timeout_seconds",
 )
 PBKDF2_ITERATIONS = 200_000
 MIN_KEYWORD_LEN = 3
@@ -153,6 +154,9 @@ class ConfigStore:
             "remote_support_enabled": False,
             "suppress_repeated_logs": True,
             "repeat_log_window_seconds": 30,
+            "block_start_delay_seconds": 90,       # 자동 차단 전 최소 대기(초). StarPlayer 기동 여유
+            "wait_for_starplayer": True,           # 자동 차단 전 StarPlayer 준비 확인
+            "starplayer_wait_timeout_seconds": 120,  # 지연 후 StarPlayer 대기 최대 시간
             "pw_salt": "",
             "pw_hash": "",
             "pw_iter": PBKDF2_ITERATIONS,
@@ -447,6 +451,21 @@ class ConfigStore:
         with self._lock:
             return self._bounded_int("repeat_log_window_seconds", 30, 5, 600)
 
+    @property
+    def block_start_delay_seconds(self) -> int:
+        with self._lock:
+            return self._bounded_int("block_start_delay_seconds", 90, 0, 600)
+
+    @property
+    def wait_for_starplayer(self) -> bool:
+        with self._lock:
+            return bool(self._data.get("wait_for_starplayer", True))
+
+    @property
+    def starplayer_wait_timeout_seconds(self) -> int:
+        with self._lock:
+            return self._bounded_int("starplayer_wait_timeout_seconds", 120, 0, 600)
+
     def _bounded_int(self, key: str, default: int, min_value: int, max_value: int) -> int:
         try:
             v = int(self._data.get(key, default))
@@ -472,13 +491,16 @@ class ConfigStore:
             elif key in ("schedule_start", "schedule_end"):
                 clean[key] = normalize_time(str(value))
             elif key in ("temp_unlock_minutes", "log_retention_days", "password_max_fails",
-                         "password_lockout_seconds", "repeat_log_window_seconds"):
+                         "password_lockout_seconds", "repeat_log_window_seconds",
+                         "block_start_delay_seconds", "starplayer_wait_timeout_seconds"):
                 ranges = {
                     "temp_unlock_minutes": (1, 480, "일시 해제 시간은 1 ~ 480분 사이여야 합니다."),
                     "log_retention_days": (1, 365, "로그 보관 기간은 1 ~ 365일 사이여야 합니다."),
                     "password_max_fails": (1, 20, "비밀번호 실패 허용 횟수는 1 ~ 20회 사이여야 합니다."),
                     "password_lockout_seconds": (5, 3600, "비밀번호 잠금 시간은 5 ~ 3600초 사이여야 합니다."),
                     "repeat_log_window_seconds": (5, 600, "반복 로그 숨김 시간은 5 ~ 600초 사이여야 합니다."),
+                    "block_start_delay_seconds": (0, 600, "차단 시작 지연은 0 ~ 600초 사이여야 합니다."),
+                    "starplayer_wait_timeout_seconds": (0, 600, "StarPlayer 대기 시간은 0 ~ 600초 사이여야 합니다."),
                 }
                 try:
                     iv = int(value)

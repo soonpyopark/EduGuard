@@ -24,6 +24,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from tkinter.scrolledtext import ScrolledText
 
 import startup
+import starplayer_ready
 import update_checker
 from config_store import ConfigError, ConfigStore, MIN_PASSWORD_LEN, REMOTE_SUPPORT_KEYWORDS
 from proxy_server import FilterProxy
@@ -42,6 +43,7 @@ WATCHDOG_FLAG_PATH = watchdog.default_flag_path(BASE_DIR)
 APP_ID = "EduGuard.FocusedLearning.1"  # 작업표시줄에서 python.exe 가 아닌 EduGuard 로 묶이도록
 ICON_ICO = "eduguard.ico"
 ICON_PNG = "eduguard.png"
+DEVELOPER_URL = "https://note4all.tistory.com"
 
 MAX_FAILS = 5
 LOCKOUT_SECONDS = 30
@@ -108,6 +110,9 @@ class App(tk.Tk):
         self.tray = TrayIcon(resource_path(ICON_ICO), APP_NAME, self._status_text, self.tray_cmds.put)
         self._tray_hint_shown = False
         self._exit_prompt_open = False
+        self._auto_block_started_at = 0.0
+        self._auto_block_waiting = False
+        self._auto_block_logged_wait = False
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -121,7 +126,7 @@ class App(tk.Tk):
         elif self.cfg.start_in_tray and self.tray.available:
             self.withdraw()  # 창 없이 트레이 아이콘으로만 시작 (비밀번호 최초 설정 때는 창이 필요하므로 제외)
         if self.cfg.auto_start and self.cfg.has_password() and not self.cfg.schedule_enabled:
-            self.after(300, self.start_blocking)
+            self._schedule_auto_block()
         self.after(1500, self._ensure_startup_task)
         self.after(1000, self._schedule_tick)
         self.after(2500, self._check_updates_async)
@@ -129,7 +134,50 @@ class App(tk.Tk):
     def _status_text(self) -> str:
         if self.temp_unlock_until:
             return f"상태: 일시 해제 중 ({self._temp_unlock_remaining()}분 남음)"
+        if self._auto_block_waiting and not self.blocking:
+            return "상태: 자동 차단 대기 중"
         return "상태: 차단 중" if self.blocking else "상태: 차단 해제됨"
+
+    def _schedule_auto_block(self) -> None:
+        """자동 차단: 지연 대기 → (옵션) StarPlayer 준비 확인 → 차단 시작."""
+        self._auto_block_started_at = time.time()
+        self._auto_block_waiting = True
+        self._auto_block_logged_wait = False
+        delay_ms = max(0, int(self.cfg.block_start_delay_seconds * 1000))
+        if delay_ms > 0:
+            self.events.put({
+                "time": time.strftime("%H:%M:%S"), "action": "GUARD", "host": "자동 차단",
+                "detail": f"{self.cfg.block_start_delay_seconds}초 후 차단 시작 예정"
+                + (" (StarPlayer 준비 확인)" if self.cfg.wait_for_starplayer else ""),
+            })
+            self._refresh_status()
+        self.after(delay_ms or 300, self._try_auto_block)
+
+    def _try_auto_block(self) -> None:
+        if self.blocking or not self._auto_block_waiting:
+            return
+        if self.cfg.wait_for_starplayer and not starplayer_ready.is_starplayer_ready():
+            elapsed = time.time() - self._auto_block_started_at
+            # 최소 지연 + 추가 대기 시간까지는 StarPlayer 를 기다린다
+            deadline = self.cfg.block_start_delay_seconds + self.cfg.starplayer_wait_timeout_seconds
+            if elapsed < deadline:
+                if not self._auto_block_logged_wait:
+                    self._auto_block_logged_wait = True
+                    self.events.put({
+                        "time": time.strftime("%H:%M:%S"), "action": "GUARD", "host": "StarPlayer",
+                        "detail": "미기동 감지 → 차단 지연 (준비되면 자동 시작)",
+                    })
+                    if self.cfg.tray_notifications:
+                        self.tray.notify(APP_NAME, "StarPlayer 기동을 기다리는 중입니다.")
+                    self._refresh_status()
+                self.after(5000, self._try_auto_block)
+                return
+            self.events.put({
+                "time": time.strftime("%H:%M:%S"), "action": "GUARD", "host": "StarPlayer",
+                "detail": "대기 시간 초과 → 차단을 강제 시작합니다",
+            })
+        self._auto_block_waiting = False
+        self.start_blocking(silent=True)
 
     def _effective_keywords(self) -> list[str]:
         keywords = self.cfg.keywords
@@ -297,7 +345,14 @@ class App(tk.Tk):
                                    fg="white", pady=10)
         self.status_lbl.pack(fill="x")
         self.counter_var = tk.StringVar(value="허용 0 / 차단 0")
-        ttk.Label(top, textvariable=self.counter_var).pack(anchor="e")
+        info_row = ttk.Frame(top)
+        info_row.pack(fill="x")
+        ttk.Label(info_row, text="개발자 홈페이지 :").pack(side="left")
+        dev_link = tk.Label(info_row, text=DEVELOPER_URL, fg="#0b66c3", cursor="hand2",
+                            font=("Malgun Gothic", 9, "underline"))
+        dev_link.pack(side="left", padx=(4, 0))
+        dev_link.bind("<Button-1>", lambda _e: webbrowser.open(DEVELOPER_URL))
+        ttk.Label(info_row, textvariable=self.counter_var).pack(side="right")
 
         btns = ttk.Frame(self)
         btns.pack(fill="x", **pad)
@@ -375,6 +430,12 @@ class App(tk.Tk):
             self.start_btn.state(["disabled"])
             self.stop_btn.state(["!disabled"])
             self.temp_unlock_btn.state(["!disabled"])
+        elif self._auto_block_waiting:
+            self.status_var.set("⏳ 자동 차단 대기 중 - StarPlayer 기동/지연 대기")
+            self.status_lbl.configure(bg="#d68910")
+            self.start_btn.state(["!disabled"])
+            self.stop_btn.state(["disabled"])
+            self.temp_unlock_btn.state(["disabled"])
         else:
             self.status_var.set("🔓 차단 해제됨 - 모든 사이트 접속 가능")
             self.status_lbl.configure(bg="#7f8c8d")
@@ -641,8 +702,18 @@ class App(tk.Tk):
                "작업 관리자 등으로 EduGuard가 강제 종료되면 다시 실행합니다. 정상 종료는 재실행하지 않습니다.")
 
         f2 = page("차단")
+        v_block_delay = tk.StringVar(value=str(self.cfg.block_start_delay_seconds))
+        v_wait_star = tk.BooleanVar(value=self.cfg.wait_for_starplayer)
+        v_star_timeout = tk.StringVar(value=str(self.cfg.starplayer_wait_timeout_seconds))
+
         option(f2, "프로그램이 시작되면 자동으로 차단 시작", v_auto_block,
                "끄면 실행 후 '차단 시작' 버튼을 눌러야 차단됩니다.")
+        labeled_entry(f2, "자동 차단 시작 지연(초)", v_block_delay,
+                      "0 ~ 600초. StarPlayer가 먼저 기동할 시간을 줍니다. 기본 90초", 8)
+        option(f2, "자동 차단 전 StarPlayer 준비 확인", v_wait_star,
+               "StarPlayer/Axissoft 프로세스가 보일 때까지 차단을 미룹니다. 시간 초과 시 강제 시작합니다.")
+        labeled_entry(f2, "StarPlayer 추가 대기(초)", v_star_timeout,
+                      "지연 이후에도 미기동이면 이 시간까지 더 기다립니다. 0 ~ 600초. 기본 120초", 8)
         option(f2, "시간대 스케줄 사용", v_schedule,
                "아래 시간대 안에서는 자동 차단, 밖에서는 자동 해제됩니다. 일시 해제가 켜져 있으면 일시 해제가 우선입니다.")
         option(f2, "원격지원모드 허용", v_remote_support,
@@ -703,6 +774,9 @@ class App(tk.Tk):
                     start_in_tray=v_tray_start.get(),
                     close_to_tray=v_tray_close.get(),
                     auto_start=v_auto_block.get(),
+                    block_start_delay_seconds=v_block_delay.get().strip(),
+                    wait_for_starplayer=v_wait_star.get(),
+                    starplayer_wait_timeout_seconds=v_star_timeout.get().strip(),
                     schedule_enabled=v_schedule.get(),
                     schedule_start=v_schedule_start.get().strip(),
                     schedule_end=v_schedule_end.get().strip(),
@@ -752,6 +826,7 @@ class App(tk.Tk):
     def start_blocking(self, silent: bool = False) -> None:
         if self.blocking:
             return
+        self._auto_block_waiting = False
         try:
             self.proxy.port = self.cfg.port
             self.proxy.filter.set_keywords(self._effective_keywords())

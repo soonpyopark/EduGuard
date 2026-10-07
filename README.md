@@ -74,6 +74,7 @@ EduGuard_1.0.0_YYMMDD_HHMMSS.msi
 | `tray.py` | 트레이(알림 영역) 아이콘 – ctypes 로 구현, 좌클릭=열기 / 우클릭 메뉴=열기·종료 |
 | `startup.py` | Windows 시작 시 자동 실행 – 작업 스케줄러(로그온, 최고 권한) 등록/해제 |
 | `watchdog.py` | 강제 종료 감시 – 비정상 종료 시 EduGuard 재실행 |
+| `starplayer_ready.py` | StarPlayer/Axissoft 프로세스 기동 여부 확인 |
 | `scripts/build_msi.py` | PyInstaller + WiX 기반 MSI 빌드 스크립트 |
 | `assets/eduguard.ico`, `eduguard.png` | 앱 아이콘 (`icon_guide.jpg` 가이드에서 생성). 창/작업표시줄/대화상자에 적용 |
 | `test_eduguard.py` | 단위/통합 테스트 |
@@ -90,7 +91,10 @@ EduGuard_1.0.0_YYMMDD_HHMMSS.msi
 | 시작 | 창 닫기(X) 시 트레이로 숨기기 | 켜짐 | 끄면 X = 프로그램 종료(비밀번호 확인) |
 | 시작 | 트레이 알림 표시 | 켜짐 | 차단 시작/해제, 일시 해제, 트레이 숨김 안내 알림 |
 | 시작 | 강제 종료 감시(워치독) | 꺼짐 | 작업 관리자 등으로 강제 종료되면 EduGuard를 다시 실행. 정상 종료는 재실행하지 않음 |
-| 차단 | 프로그램 시작 시 자동 차단 시작 | 켜짐 | 스케줄이 꺼져 있을 때 시작 직후 차단 |
+| 차단 | 프로그램 시작 시 자동 차단 시작 | 켜짐 | 스케줄이 꺼져 있을 때 자동 차단 |
+| 차단 | 자동 차단 시작 지연 | 90초 | StarPlayer가 먼저 기동할 시간을 줌. 0 ~ 600초 |
+| 차단 | StarPlayer 준비 확인 | 켜짐 | 프로세스 감지 전까지 차단을 미룸. 시간 초과 시 강제 시작 |
+| 차단 | StarPlayer 추가 대기 | 120초 | 지연 이후에도 미기동이면 이 시간까지 더 대기 |
 | 차단 | 시간대 스케줄 | 꺼짐 | 지정 시간대 안에서는 자동 차단, 밖에서는 자동 해제 |
 | 차단 | 원격지원모드 허용 | 꺼짐 | TeamViewer 연결 유지를 위해 `teamviewer`, `dyngate` 도메인을 추가 허용 |
 | 차단 | 일시 해제 기본 시간 | 30분 | `⏱ 일시 해제` 버튼의 기본 시간 |
@@ -108,6 +112,7 @@ EduGuard_1.0.0_YYMMDD_HHMMSS.msi
 > 자동 실행 작업은 **등록 시 사용된 관리자 계정**의 로그온에 묶입니다. 자녀(표준) 계정 로그온 때도 실행되는지는 PC 환경에서 꼭 확인하세요.
 > 원격지원모드는 테스트/원격 유지 목적의 우회 허용입니다. 현재는 TeamViewer용 `teamviewer`, `dyngate` 계열 도메인만 추가로 열리므로 설치·점검이 끝나면 끄는 것을 권장합니다.
 > StarPlayer/Axissoft 연동을 위해 `localhost.axissoft.co.kr`은 신뢰 로컬 호스트로 예외 허용합니다. 다른 루프백/사설 IP 접속은 계속 차단됩니다.
+> EduGuard가 StarPlayer보다 먼저 뜨면 재생이 실패할 수 있어, 기본값으로 자동 차단을 90초 지연하고 StarPlayer 프로세스를 확인한 뒤 차단을 시작합니다.
 
 ## 수동 테스트 순서
 1. `python main.py` → 비밀번호 설정 → 자동으로 차단 시작

@@ -124,6 +124,9 @@ class ConfigStoreTest(unittest.TestCase):
         self.assertFalse(c.remote_support_enabled)
         self.assertTrue(c.suppress_repeated_logs)
         self.assertEqual(c.repeat_log_window_seconds, 30)
+        self.assertEqual(c.block_start_delay_seconds, 90)
+        self.assertTrue(c.wait_for_starplayer)
+        self.assertEqual(c.starplayer_wait_timeout_seconds, 120)
         c.set_password("1234")
         c.set_settings(run_at_startup=True, start_in_tray=True, close_to_tray=False,
                        auto_start=False, port="9000", schedule_enabled=True,
@@ -134,7 +137,9 @@ class ConfigStoreTest(unittest.TestCase):
                        tray_notifications=False, password_max_fails="3",
                        password_lockout_seconds="60", audit_enabled=False,
                        remote_support_enabled=True, suppress_repeated_logs=False,
-                       repeat_log_window_seconds="45")
+                       repeat_log_window_seconds="45",
+                       block_start_delay_seconds="60", wait_for_starplayer=False,
+                       starplayer_wait_timeout_seconds="180")
         c2 = ConfigStore(self.path)
         self.assertFalse(c2.tampered)
         self.assertTrue(c2.run_at_startup)
@@ -158,6 +163,9 @@ class ConfigStoreTest(unittest.TestCase):
         self.assertTrue(c2.remote_support_enabled)
         self.assertFalse(c2.suppress_repeated_logs)
         self.assertEqual(c2.repeat_log_window_seconds, 45)
+        self.assertEqual(c2.block_start_delay_seconds, 60)
+        self.assertFalse(c2.wait_for_starplayer)
+        self.assertEqual(c2.starplayer_wait_timeout_seconds, 180)
 
     def test_settings_validation_is_atomic(self):
         c = ConfigStore(self.path)
@@ -172,6 +180,7 @@ class ConfigStoreTest(unittest.TestCase):
             ("temp_unlock_minutes", "0"), ("log_retention_days", "366"),
             ("guard_interval", "0.1"), ("password_max_fails", "21"),
             ("password_lockout_seconds", "4"), ("repeat_log_window_seconds", "4"),
+            ("block_start_delay_seconds", "601"), ("starplayer_wait_timeout_seconds", "-1"),
             ("block_message", ""),
         ]:
             with self.assertRaises(ConfigError, msg=key):
@@ -201,6 +210,24 @@ class ConfigStoreTest(unittest.TestCase):
         migrated = ConfigStore(self.path)
         self.assertIn("jwplatform", migrated.keywords)
         self.assertIn("axissoft", migrated.keywords)
+
+
+class StarPlayerReadyTest(unittest.TestCase):
+    def test_detects_marker_in_process_names(self):
+        import starplayer_ready
+        self.assertTrue(starplayer_ready.is_starplayer_ready(
+            process_names=["chrome.exe", "StarPlayer.exe", "explorer.exe"]))
+        self.assertTrue(starplayer_ready.is_starplayer_ready(
+            process_names=["AxisSoftHelper.exe"]))
+        self.assertFalse(starplayer_ready.is_starplayer_ready(
+            process_names=["chrome.exe", "notepad.exe"]))
+
+    def test_parse_tasklist_csv(self):
+        import starplayer_ready
+        sample = '"StarPlayer.exe","1234","Console","1","12,345 K"\r\n"chrome.exe","1","Console","1","1 K"\r\n'
+        names = starplayer_ready.list_running_process_names(sample)
+        self.assertIn("StarPlayer.exe", names)
+        self.assertIn("chrome.exe", names)
 
 
 class StartupTaskTest(unittest.TestCase):

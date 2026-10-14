@@ -1,8 +1,9 @@
 """EduGuard - 학습 사이트 전용 인터넷 제어 프로그램 (Windows).
 
 실행:   python main.py
-옵션:   --no-admin   관리자 권한 자동 상승을 건너뜀 (개발/테스트용, 현재 사용자에게만 적용)
-        --restore    GUI 없이 비밀번호 확인 후 시스템 프록시를 원래대로 복원 (비상용)
+옵션:   --no-admin              관리자 권한 자동 상승을 건너뜀 (개발/테스트용, 현재 사용자에게만 적용)
+        --restore               GUI 없이 비밀번호 확인 후 시스템 프록시를 원래대로 복원 (비상용)
+        --clear-stale-proxy     GUI 없이 잔여 EduGuard 시스템 프록시만 복원 (로그온 정리 작업용)
 """
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ from proxy_server import FilterProxy
 from system_proxy import ProxyGuard, SystemProxy, is_admin
 from tray import TrayIcon
 import watchdog
-from version import APP_NAME, APP_VERSION
+from version import APP_BUILD_TIME, APP_NAME, APP_VERSION, version_display
 
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
@@ -81,7 +82,7 @@ class App(tk.Tk):
     def __init__(self, config: ConfigStore):
         super().__init__()
         self.cfg = config
-        self.title(f"{APP_NAME} {APP_VERSION} - 학습 사이트 전용 모드")
+        self.title(f"{APP_NAME} {version_display()} - 학습 사이트 전용 모드")
         self.geometry("720x720")
         self.minsize(640, 620)
         self._set_icon()
@@ -122,6 +123,8 @@ class App(tk.Tk):
         self._prune_logs()
         # 차단 시작 전이라도 이전 실행의 시스템 프록시가 남아 있으면 StarPlayer 등이 실패한다.
         self.after(100, self._clear_stale_proxy_if_needed)
+        # PC 종료/로그오프 시 프록시를 남겨 두지 않도록 세션 종료를 훅한다.
+        self.after(300, self._install_shutdown_restore)
 
         if not self.cfg.has_password():
             self._first_time_setup()
@@ -236,9 +239,78 @@ class App(tk.Tk):
             self.after(50, self.on_exit)
 
     def _ensure_startup_task(self) -> None:
-        """'Windows 시작 시 자동 실행'이 켜져 있으면 작업 스케줄러 등록을 최신 경로로 갱신 (이동/삭제 복구)."""
-        if self.cfg.run_at_startup and is_admin():
-            threading.Thread(target=startup.register, daemon=True).start()
+        """로그온 잔여 프록시 정리 작업은 항상 갱신하고, 자동 실행이 켜져 있으면 본 작업도 갱신."""
+        if not is_admin():
+            return
+
+        def work() -> None:
+            startup.register_cleanup()
+            if self.cfg.run_at_startup:
+                startup.register()
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _restore_proxy_for_session_end(self) -> None:
+        """종료/재시작/로그오프 직전: 시스템 프록시를 남겨 두지 않는다."""
+        if getattr(self, "_session_proxy_restored", False):
+            return
+        self._session_proxy_restored = True
+        try:
+            self.guard.stop()
+        except Exception:
+            pass
+        try:
+            self.sysproxy.disable()
+            self.blocking = False
+        except Exception:
+            pass
+
+    def _install_shutdown_restore(self) -> None:
+        """WM_QUERYENDSESSION / WM_ENDSESSION 에서 프록시를 원복한다."""
+        if sys.platform != "win32":
+            return
+        try:
+            from ctypes import wintypes
+        except ImportError:
+            return
+
+        user32 = ctypes.windll.user32
+        WM_QUERYENDSESSION = 0x0011
+        WM_ENDSESSION = 0x0016
+        GWLP_WNDPROC = -4
+        LRESULT = ctypes.c_ssize_t
+        WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+
+        hwnd = int(self.winfo_id())
+        if ctypes.sizeof(ctypes.c_void_p) == 8:
+            get_long = user32.GetWindowLongPtrW
+            set_long = user32.SetWindowLongPtrW
+        else:
+            get_long = user32.GetWindowLongW
+            set_long = user32.SetWindowLongW
+        get_long.argtypes = [wintypes.HWND, ctypes.c_int]
+        get_long.restype = ctypes.c_void_p
+        set_long.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+        set_long.restype = ctypes.c_void_p
+        user32.CallWindowProcW.argtypes = [ctypes.c_void_p, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        user32.CallWindowProcW.restype = LRESULT
+
+        old_proc = get_long(hwnd, GWLP_WNDPROC)
+
+        @WNDPROC
+        def wndproc(h, msg, wp, lp):
+            if msg == WM_QUERYENDSESSION:
+                self._restore_proxy_for_session_end()
+                return 1
+            if msg == WM_ENDSESSION:
+                if wp:  # TRUE = 세션이 실제로 끝남
+                    self._restore_proxy_for_session_end()
+                return 0
+            return user32.CallWindowProcW(old_proc, h, msg, wp, lp)
+
+        self._session_wndproc = wndproc  # GC 방지
+        self._session_old_proc = old_proc
+        set_long(hwnd, GWLP_WNDPROC, ctypes.cast(wndproc, ctypes.c_void_p))
 
     def _check_updates_async(self) -> None:
         if not update_checker.manifest_url():
@@ -433,6 +505,9 @@ class App(tk.Tk):
         bottom.pack(fill="x", **pad)
         ttk.Button(bottom, text="비밀번호 변경", command=self.change_password).pack(side="left")
         ttk.Button(bottom, text="⚙ 환경설정 (비밀번호)", command=self.open_settings).pack(side="left", padx=6)
+        ttk.Button(bottom, text="버전 정보", command=self.show_version_info).pack(side="left")
+        ttk.Button(bottom, text="프록시 상태", command=self.show_proxy_status).pack(side="left", padx=6)
+        ttk.Button(bottom, text="Windows 서비스", command=self.open_windows_services).pack(side="left")
         ttk.Button(bottom, text="프로그램 종료 (비밀번호)", command=self.on_exit).pack(side="right")
 
         self._refresh_keywords()
@@ -653,6 +728,54 @@ class App(tk.Tk):
         except ConfigError as e:
             messagebox.showerror(APP_NAME, str(e), parent=self)
 
+    def show_version_info(self) -> None:
+        """버전과 빌드 일자/시간을 안내한다."""
+        build = APP_BUILD_TIME or "소스 실행 (빌드 시각 없음)"
+        messagebox.showinfo(
+            APP_NAME,
+            f"프로그램: {APP_NAME}\n버전: {APP_VERSION}\n빌드: {build}",
+            parent=self,
+        )
+
+    def show_proxy_status(self) -> None:
+        """설치된 PC의 시스템 프록시/EduGuard 강제 상태를 확인한다."""
+        report = self.sysproxy.status_report(
+            app_blocking=self.blocking,
+            expected_port=self.cfg.port if self.blocking else None,
+        )
+        dlg = tk.Toplevel(self)
+        dlg.title(f"{APP_NAME} - 프록시 상태")
+        dlg.transient(self)
+        dlg.geometry("520x420")
+        dlg.minsize(420, 320)
+        body = ScrolledText(dlg, wrap="word", font=("Consolas", 9))
+        body.pack(fill="both", expand=True, padx=10, pady=10)
+        body.insert("1.0", report)
+        body.configure(state="disabled")
+
+        def refresh() -> None:
+            text = self.sysproxy.status_report(
+                app_blocking=self.blocking,
+                expected_port=self.cfg.port if self.blocking else None,
+            )
+            body.configure(state="normal")
+            body.delete("1.0", "end")
+            body.insert("1.0", text)
+            body.configure(state="disabled")
+
+        btns = ttk.Frame(dlg)
+        btns.pack(fill="x", padx=10, pady=(0, 10))
+        ttk.Button(btns, text="새로고침", command=refresh).pack(side="left")
+        ttk.Button(btns, text="닫기", command=dlg.destroy).pack(side="right")
+        dlg.grab_set()
+
+    def open_windows_services(self) -> None:
+        """Windows 서비스 관리자(services.msc)를 연다."""
+        try:
+            os.startfile("services.msc")  # type: ignore[attr-defined]
+        except OSError as e:
+            messagebox.showerror(APP_NAME, f"Windows 서비스를 열 수 없습니다.\n{e}", parent=self)
+
     # -------------------------------------------------------------- 환경설정
     def open_settings(self) -> None:
         if not self.require_password("환경설정을 엽니다."):
@@ -786,6 +909,12 @@ class App(tk.Tk):
 
         def save() -> None:
             want_startup = v_startup.get()
+            if is_admin():
+                # 자동 실행 여부와 관계없이 로그온 직후 잔여 프록시 정리는 유지한다.
+                ok_c, msg_c = startup.register_cleanup()
+                if not ok_c:
+                    messagebox.showerror(APP_NAME, f"잔여 프록시 정리 작업을 등록하지 못했습니다.\n{msg_c}", parent=dlg)
+                    return
             if want_startup != registered:
                 ok, msg = startup.register() if want_startup else startup.unregister()
                 if not ok:
@@ -1031,6 +1160,17 @@ def restore_cli() -> None:
     input("Enter 키를 누르면 창이 닫힙니다...")  # UAC 로 뜬 새 콘솔이 바로 닫히지 않게
 
 
+def clear_stale_proxy_cli() -> int:
+    """로그온 직후 잔여 EduGuard 시스템 프록시만 복원하고 종료한다."""
+    try:
+        sp = SystemProxy(BACKUP_PATH)
+        if sp.has_stale_proxy():
+            sp.disable()
+        return 0
+    except Exception:
+        return 1
+
+
 def uninstall_cleanup() -> None:
     """MSI 제거 시 가능한 범위에서 런타임 잔여물과 시스템 설정을 정리한다."""
     try:
@@ -1038,7 +1178,7 @@ def uninstall_cleanup() -> None:
     except Exception:
         pass
     try:
-        startup.unregister()
+        startup.unregister_all()
     except Exception:
         pass
     try:
@@ -1076,6 +1216,9 @@ def main() -> None:
         ctypes.windll.user32.MessageBoxW(None, "관리자 권한이 필요합니다. UAC 창에서 '예'를 선택해 주세요.",
                                          APP_NAME, 0x10)
         sys.exit(1)
+
+    if "--clear-stale-proxy" in args:
+        raise SystemExit(clear_stale_proxy_cli())
 
     if "--restore" in args:
         restore_cli()

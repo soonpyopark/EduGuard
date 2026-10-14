@@ -144,6 +144,79 @@ class SystemProxy:
                 return True
         return False
 
+    @staticmethod
+    def summarize_values(values: dict) -> dict:
+        """레지스트리 값을 사람이 읽기 쉬운 요약 dict 로 변환."""
+        en = values.get("ProxyEnable")
+        srv = values.get("ProxyServer")
+        ovr = values.get("ProxyOverride")
+        pac = values.get("AutoConfigURL")
+        enabled = bool(en and en[1] == 1)
+        server = str(srv[1]) if srv else ""
+        override = str(ovr[1]) if ovr else ""
+        pac_url = str(pac[1]) if pac else ""
+        return {
+            "enabled": enabled,
+            "server": server,
+            "override": override,
+            "pac": pac_url,
+            "eduguard_like": SystemProxy.looks_like_eduguard_proxy(values),
+        }
+
+    def read_user_snapshots(self) -> List[dict]:
+        """로드된 각 사용자 하이브의 현재 시스템 프록시 스냅샷."""
+        rows: List[dict] = []
+        for sid in _loaded_user_sids():
+            cur = self._read_values(sid)
+            if not cur:
+                continue
+            row = self.summarize_values(cur)
+            row["sid"] = sid
+            rows.append(row)
+        return rows
+
+    def status_report(self, *, app_blocking: bool = False, expected_port: Optional[int] = None) -> str:
+        """설치된 PC의 프록시 상태를 확인용 텍스트로 반환."""
+        lines = [
+            "[EduGuard]",
+            f"앱 차단 상태: {'켜짐' if app_blocking else '꺼짐'}",
+            f"강제 중 주소: {self._target or '(없음)'}",
+            f"원본 백업 파일: {'있음' if self.has_backup() else '없음'}",
+        ]
+        if expected_port is not None:
+            lines.append(f"설정된 프록시 포트: {expected_port}")
+        lines.append("")
+        lines.append("[시스템 프록시 (레지스트리)]")
+        snaps = self.read_user_snapshots()
+        if not snaps:
+            lines.append("로드된 사용자 하이브가 없거나 읽을 수 없습니다.")
+            return "\n".join(lines)
+
+        for i, snap in enumerate(snaps, 1):
+            sid = snap["sid"]
+            short = sid if len(sid) <= 24 else f"...{sid[-20:]}"
+            judgment = "EduGuard 프록시로 보임" if snap["eduguard_like"] else "EduGuard 프록시 아님"
+            if app_blocking and expected_port is not None:
+                expect = f"127.0.0.1:{expected_port}"
+                if snap["enabled"] and snap["server"] == expect and not snap["pac"]:
+                    judgment = "EduGuard 강제 설정과 일치"
+                elif snap["eduguard_like"]:
+                    judgment = "EduGuard 형태이지만 포트/설정 불일치"
+                else:
+                    judgment = "강제 중인데 시스템 설정이 다름"
+            elif (not app_blocking) and snap["eduguard_like"]:
+                judgment = "잔여 EduGuard 프록시 가능"
+
+            lines.append(f"사용자 {i} ({short})")
+            lines.append(f"  사용: {'예' if snap['enabled'] else '아니오'}")
+            lines.append(f"  주소: {snap['server'] or '(없음)'}")
+            lines.append(f"  예외(ProxyOverride): {snap['override'] if snap['override'] != '' else '(비어 있음)'}")
+            lines.append(f"  PAC: {snap['pac'] or '(없음)'}")
+            lines.append(f"  판정: {judgment}")
+            if i < len(snaps):
+                lines.append("")
+        return "\n".join(lines)
+
     def _backup_missing(self, target: str) -> None:
         backup = self._load_backup()
         changed = False

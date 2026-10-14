@@ -15,6 +15,7 @@ logs/
 build/
 dist/
 *.spec
+build_info.py
 msi/*.msi
 msi/*.wixpdb
 

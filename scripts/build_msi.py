@@ -22,6 +22,7 @@ from version import APP_NAME, APP_VERSION  # noqa: E402
 PROJECT_NAME = APP_NAME
 MANUFACTURER = "EduGuard"
 UPGRADE_CODE = "E6B54289-5E29-47F1-9B0B-12F9543B5F15"
+BUILD_INFO_PATH = ROOT / "build_info.py"
 
 
 def run(cmd: list[str], cwd: Path = ROOT) -> None:
@@ -41,6 +42,17 @@ def version_tuple(version: str) -> tuple[int, int, int, int]:
     while len(parts) < 4:
         parts.append(0)
     return tuple(parts[:4])
+
+
+def write_build_info(path: Path, build_time: str) -> None:
+    """실행 파일에 포함될 빌드 시각 모듈을 생성한다."""
+    path.write_text(
+        dedent(f'''
+            """빌드 시 자동 생성. 직접 수정하지 마세요."""
+            BUILD_TIME = {build_time!r}
+        ''').strip() + "\n",
+        encoding="utf-8",
+    )
 
 
 def write_version_info(path: Path) -> None:
@@ -162,14 +174,13 @@ def write_wxs(path: Path, exe_path: Path) -> None:
     """).strip() + "\n", encoding="utf-8")
 
 
-def build_msi(exe: Path) -> Path:
+def build_msi(exe: Path, file_stamp: str) -> Path:
     wix = require_tool("wix.exe")
     out_dir = ROOT / "msi"
     work_dir = ROOT / "build" / "msi"
     out_dir.mkdir(exist_ok=True)
     work_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-    out_msi = out_dir / f"{PROJECT_NAME}_{APP_VERSION}_{timestamp}.msi"
+    out_msi = out_dir / f"{PROJECT_NAME}_{APP_VERSION}_{file_stamp}.msi"
     wxs = work_dir / f"{PROJECT_NAME}.wxs"
     write_wxs(wxs, exe)
     run([wix, "build", str(wxs), "-o", str(out_msi)])
@@ -179,9 +190,18 @@ def build_msi(exe: Path) -> Path:
 
 
 def main() -> int:
-    exe = build_exe()
-    msi = build_msi(exe)
+    now = datetime.now()
+    display_time = now.strftime("%Y-%m-%d %H:%M:%S")
+    file_stamp = now.strftime("%y%m%d_%H%M%S")
+    write_build_info(BUILD_INFO_PATH, display_time)
+    try:
+        exe = build_exe()
+        msi = build_msi(exe, file_stamp)
+    finally:
+        if BUILD_INFO_PATH.exists():
+            BUILD_INFO_PATH.unlink()
     print(f"\nMSI 생성 완료: {msi}")
+    print(f"빌드 시각: {display_time}")
     return 0
 
 

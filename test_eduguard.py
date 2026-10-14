@@ -248,6 +248,37 @@ class StaleProxyDetectTest(unittest.TestCase):
         }))
         self.assertFalse(SystemProxy.looks_like_eduguard_proxy({}))
 
+    def test_summarize_and_status_report(self):
+        from system_proxy import SystemProxy
+        import winreg
+        import tempfile
+        import os
+        values = {
+            "ProxyEnable": [winreg.REG_DWORD, 1],
+            "ProxyServer": [winreg.REG_SZ, "127.0.0.1:8899"],
+            "ProxyOverride": [winreg.REG_SZ, ""],
+            "AutoConfigURL": None,
+        }
+        summary = SystemProxy.summarize_values(values)
+        self.assertTrue(summary["enabled"])
+        self.assertEqual(summary["server"], "127.0.0.1:8899")
+        self.assertTrue(summary["eduguard_like"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            sp = SystemProxy(os.path.join(tmp, "proxy_backup.json"))
+            sp._target = "127.0.0.1:8899"
+            sp.read_user_snapshots = lambda: [{
+                "sid": "S-1-5-21-111-222-333-1001",
+                **summary,
+            }]
+            report = sp.status_report(app_blocking=True, expected_port=8899)
+            self.assertIn("앱 차단 상태: 켜짐", report)
+            self.assertIn("127.0.0.1:8899", report)
+            self.assertIn("EduGuard 강제 설정과 일치", report)
+
+            report2 = sp.status_report(app_blocking=False)
+            self.assertIn("잔여 EduGuard 프록시 가능", report2)
+
 
 class StartupTaskTest(unittest.TestCase):
     def test_task_xml(self):
@@ -263,6 +294,44 @@ class StartupTaskTest(unittest.TestCase):
         self.assertEqual(root.find(".//t:DisallowStartIfOnBatteries", ns).text, "false")
         self.assertEqual(root.find(".//t:ExecutionTimeLimit", ns).text, "PT0S")
 
+    def test_cleanup_command_and_xml(self):
+        import xml.etree.ElementTree as ET
+        import startup
+        exe, args = startup.launch_cleanup_command()
+        self.assertIn("--clear-stale-proxy", args)
+        xml = startup.build_task_xml(
+            exe, args, delay="PT0S",
+            description="EduGuard - 로그온 직후 잔여 시스템 프록시 복원",
+        )
+        root = ET.fromstring(xml.split("?>", 1)[1])
+        ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+        self.assertEqual(root.find(".//t:Delay", ns).text, "PT0S")
+        self.assertIn("--clear-stale-proxy", root.find(".//t:Arguments", ns).text)
+
+    def test_frozen_cleanup_workdir_uses_exe_dir(self):
+        """MSI 배포처럼 인자가 플래그만일 때 WorkingDirectory 가 비면 안 된다."""
+        import xml.etree.ElementTree as ET
+        import startup
+        exe = r"C:\Program Files\EduGuard\EduGuard.exe"
+        xml = startup.build_task_xml(exe, ["--clear-stale-proxy"], delay="PT0S")
+        root = ET.fromstring(xml.split("?>", 1)[1])
+        ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+        self.assertEqual(
+            root.find(".//t:WorkingDirectory", ns).text,
+            r"C:\Program Files\EduGuard",
+        )
+
+    def test_main_register_xml_has_delay(self):
+        import xml.etree.ElementTree as ET
+        import startup
+        xml = startup.build_task_xml(
+            r"C:\EduGuard\EduGuard.exe", [], delay="PT15S",
+            description="EduGuard - Windows 로그온 시 자동 실행",
+        )
+        root = ET.fromstring(xml.split("?>", 1)[1])
+        ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+        self.assertEqual(root.find(".//t:Delay", ns).text, "PT15S")
+
 
 class UpdateCheckerTest(unittest.TestCase):
     def test_version_compare(self):
@@ -275,6 +344,30 @@ class UpdateCheckerTest(unittest.TestCase):
     def test_no_manifest_url_skips(self):
         import update_checker
         self.assertIsNone(update_checker.check_for_update(url=""))
+
+
+class VersionDisplayTest(unittest.TestCase):
+    def test_version_display_source(self):
+        import version
+        # 빌드 산출물이 없는 소스 실행이면 빌드 시각 문구가 없다.
+        self.assertTrue(version.APP_VERSION)
+        if not version.APP_BUILD_TIME:
+            self.assertIn("소스 실행", version.version_display())
+        else:
+            self.assertIn(version.APP_BUILD_TIME, version.version_display())
+
+    def test_write_build_info_content(self):
+        import importlib.util
+        from pathlib import Path
+        from scripts.build_msi import write_build_info
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "build_info.py"
+            write_build_info(path, "2026-10-14 21:20:36")
+            spec = importlib.util.spec_from_file_location("build_info_test", path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            self.assertEqual(mod.BUILD_TIME, "2026-10-14 21:20:36")
 
 
 class RemoteSupportModeTest(unittest.TestCase):

@@ -125,6 +125,25 @@ class SystemProxy:
     def has_backup(self) -> bool:
         return bool(self._load_backup())
 
+    @staticmethod
+    def looks_like_eduguard_proxy(values: dict) -> bool:
+        """우리 프로그램이 남긴 시스템 프록시인지 (127.0.0.1:포트 + 사용 중)."""
+        en = values.get("ProxyEnable")
+        srv = values.get("ProxyServer")
+        if not en or en[1] != 1 or not srv:
+            return False
+        return str(srv[1]).startswith("127.0.0.1:")
+
+    def has_stale_proxy(self) -> bool:
+        """이전 실행에서 남은 EduGuard 프록시/백업이 있으면 True (현재 강제 중이 아니어도)."""
+        if self.has_backup():
+            return True
+        for sid in _loaded_user_sids():
+            cur = self._read_values(sid)
+            if cur and self.looks_like_eduguard_proxy(cur):
+                return True
+        return False
+
     def _backup_missing(self, target: str) -> None:
         backup = self._load_backup()
         changed = False

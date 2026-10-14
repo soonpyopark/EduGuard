@@ -120,6 +120,8 @@ class App(tk.Tk):
         self.tray.start()
         self._start_watchdog_if_needed()
         self._prune_logs()
+        # 차단 시작 전이라도 이전 실행의 시스템 프록시가 남아 있으면 StarPlayer 등이 실패한다.
+        self.after(100, self._clear_stale_proxy_if_needed)
 
         if not self.cfg.has_password():
             self._first_time_setup()
@@ -130,6 +132,27 @@ class App(tk.Tk):
         self.after(1500, self._ensure_startup_task)
         self.after(1000, self._schedule_tick)
         self.after(2500, self._check_updates_async)
+
+    def _clear_stale_proxy_if_needed(self) -> None:
+        """차단 중이 아닐 때 이전 세션의 EduGuard 시스템 프록시를 복원한다."""
+        if self.blocking:
+            return
+        try:
+            if not self.sysproxy.has_stale_proxy():
+                return
+            self.sysproxy.disable()
+            self.events.put({
+                "time": time.strftime("%H:%M:%S"), "action": "GUARD", "host": "시스템 프록시",
+                "detail": "이전 실행 잔여 설정 감지 → 원래대로 복원",
+            })
+            self.audit("STALE_PROXY", "잔여 시스템 프록시 복원")
+            if self.cfg.tray_notifications:
+                self.tray.notify(APP_NAME, "이전 실행에 남은 프록시 설정을 복원했습니다.")
+        except Exception as e:
+            self.events.put({
+                "time": time.strftime("%H:%M:%S"), "action": "ERROR", "host": "시스템 프록시",
+                "detail": f"잔여 설정 복원 실패: {e}",
+            })
 
     def _status_text(self) -> str:
         if self.temp_unlock_until:

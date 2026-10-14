@@ -230,6 +230,25 @@ class StarPlayerReadyTest(unittest.TestCase):
         self.assertIn("chrome.exe", names)
 
 
+class StaleProxyDetectTest(unittest.TestCase):
+    def test_looks_like_eduguard_proxy(self):
+        from system_proxy import SystemProxy
+        import winreg
+        self.assertTrue(SystemProxy.looks_like_eduguard_proxy({
+            "ProxyEnable": [winreg.REG_DWORD, 1],
+            "ProxyServer": [winreg.REG_SZ, "127.0.0.1:8899"],
+        }))
+        self.assertFalse(SystemProxy.looks_like_eduguard_proxy({
+            "ProxyEnable": [winreg.REG_DWORD, 0],
+            "ProxyServer": [winreg.REG_SZ, "127.0.0.1:8899"],
+        }))
+        self.assertFalse(SystemProxy.looks_like_eduguard_proxy({
+            "ProxyEnable": [winreg.REG_DWORD, 1],
+            "ProxyServer": [winreg.REG_SZ, "proxy.company.com:8080"],
+        }))
+        self.assertFalse(SystemProxy.looks_like_eduguard_proxy({}))
+
+
 class StartupTaskTest(unittest.TestCase):
     def test_task_xml(self):
         import xml.etree.ElementTree as ET
@@ -352,14 +371,14 @@ class ProxyTest(unittest.TestCase):
 
     def test_http_allowed_and_rewritten(self):
         resp = _roundtrip(self.proxy.port,
-                          b"GET http://www.ebsi.co.kr/a/b?x=1 HTTP/1.1\r\nHost: evil.com\r\n"
+                          b"GET http://www.ebsi.co.kr/a/b?x=1 HTTP/1.1\r\nHost: spoofed.invalid\r\n"
                           b"Proxy-Connection: keep-alive\r\nUser-Agent: t\r\n\r\n")
         self.assertIn(b"200 OK", resp)
         self.assertTrue(resp.endswith(b"hello"))
         sent = self.upstream.received[-1]
         self.assertTrue(sent.startswith(b"GET /a/b?x=1 HTTP/1.1\r\n"))
         self.assertIn(b"Host: www.ebsi.co.kr", sent)
-        self.assertNotIn(b"evil.com", sent)
+        self.assertNotIn(b"spoofed.invalid", sent)
         self.assertNotIn(b"Proxy-Connection", sent)
         self.assertIn(b"Connection: close", sent)
 

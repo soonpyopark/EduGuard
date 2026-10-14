@@ -113,6 +113,7 @@ EduGuard_1.0.0_YYMMDD_HHMMSS.msi
 > 원격지원모드는 테스트/원격 유지 목적의 우회 허용입니다. 현재는 TeamViewer용 `teamviewer`, `dyngate` 계열 도메인만 추가로 열리므로 설치·점검이 끝나면 끄는 것을 권장합니다.
 > StarPlayer/Axissoft 연동을 위해 `localhost.axissoft.co.kr`은 신뢰 로컬 호스트로 예외 허용합니다. 다른 루프백/사설 IP 접속은 계속 차단됩니다.
 > EduGuard가 StarPlayer보다 먼저 뜨면 재생이 실패할 수 있어, 기본값으로 자동 차단을 90초 지연하고 StarPlayer 프로세스를 확인한 뒤 차단을 시작합니다.
+> 프로그램 시작 시(차단 시작 전이라도) 이전 실행에 남은 `127.0.0.1:포트` 시스템 프록시/`proxy_backup.json`이 있으면 먼저 원래 설정으로 복원합니다. 재부팅 후에도 UI는 해제 상태인데 인터넷만 막히는 현상을 줄입니다.
 
 ## 수동 테스트 순서
 1. `python main.py` → 비밀번호 설정 → 자동으로 차단 시작

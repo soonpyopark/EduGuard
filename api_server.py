@@ -51,6 +51,7 @@ def _routes() -> Dict[Tuple[str, str], Route]:
         ("POST", "/api/settings/save"): lambda e, b, q: e.save_settings(b.get("password"), b.get("settings")),
         ("POST", "/api/open"): lambda e, b, q: e.open_target(str(b.get("target", ""))) or {},
         ("POST", "/api/exit"): lambda e, b, q: e.request_exit(b.get("password")) or {},
+        ("POST", "/api/update/check"): lambda e, b, q: e.check_update_now(),
     }
 
 

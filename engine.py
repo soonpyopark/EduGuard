@@ -634,6 +634,21 @@ class Engine:
             self.update_info = {"version": info.version, "url": info.url, "notes": info.notes}
             self._notify(f"새 버전 {info.version} 을 사용할 수 있습니다.")
 
+    def check_update_now(self) -> dict:
+        """사용자가 업데이트 확인을 눌렀을 때. 더 새 릴리스가 있으면 배너에도 반영한다."""
+        result = update_checker.check_latest()
+        if not result.get("error"):
+            with self._lock:
+                if result.get("available"):
+                    self.update_info = {
+                        "version": result.get("latest", ""),
+                        "url": result.get("url", ""),
+                        "notes": result.get("notes", ""),
+                    }
+                else:
+                    self.update_info = None
+        return result
+
     def _start_watchdog_if_needed(self) -> None:
         if self._watchdog_proc is not None and self._watchdog_proc.poll() is not None:
             self._watchdog_proc = None

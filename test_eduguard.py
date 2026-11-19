@@ -360,6 +360,33 @@ class UpdateCheckerTest(unittest.TestCase):
         import update_checker
         self.assertIsNone(update_checker.check_for_update(url=""))
 
+    def test_release_version_accepts_tag_and_title(self):
+        import update_checker
+        self.assertEqual(update_checker.normalize_release_version("v1.0.0-5", "v1.0.0.5"), "1.0.0.5")
+        self.assertEqual(update_checker.normalize_release_version("v1.0.0-5", ""), "1.0.0.5")
+        self.assertEqual(update_checker.normalize_release_version("not-a-version", ""), "")
+
+    def test_interpret_release_compares_four_part_version(self):
+        import update_checker
+        newer = update_checker.interpret_release(
+            {
+                "tag_name": "v1.0.0-5",
+                "name": "v1.0.0.5",
+                "html_url": "https://github.com/soonpyopark/EduGuard/releases/tag/v1.0.0-5",
+                "body": "- 로그 스크롤\n\n## 이전 버전 이력\n- 이전",
+            },
+            current_version="1.0.0.4",
+        )
+        self.assertTrue(newer["available"])
+        self.assertEqual(newer["latest"], "1.0.0.5")
+        self.assertNotIn("이전 버전 이력", newer["notes"])
+        same = update_checker.interpret_release(
+            {"tag_name": "v1.0.0-4", "name": "v1.0.0.4", "html_url": "https://example.test/r", "body": ""},
+            current_version="1.0.0.4",
+        )
+        self.assertFalse(same["available"])
+        self.assertEqual(same["error"], "")
+
 
 class VersionDisplayTest(unittest.TestCase):
     def test_semver_and_git_tag(self):

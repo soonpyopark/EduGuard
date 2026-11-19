@@ -2,7 +2,7 @@
 
 APP_NAME = "EduGuard"
 # 점 네 자리. Git 태그는 v1.0.0-N, package.json 은 1.0.0-N. npm run version:bump 가 함께 올린다.
-APP_VERSION = "1.0.0.4"
+APP_VERSION = "1.0.0.5"
 
 # GitHub Releases 저장소 (owner/repo). "배포해줘" 의 publish:release 가 사용한다.
 UPDATE_REPO = "soonpyopark/EduGuard"

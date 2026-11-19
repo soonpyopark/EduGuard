@@ -4,6 +4,8 @@
 // 로그의 호스트명 등 외부에서 온 문자열이 많으므로 innerHTML 을 쓰지 않고 textContent 로만 DOM 을 만든다.
 
 const bridge = window.eduguard;
+const BLOG_URL = 'https://note4all.tistory.com';
+const GITHUB_URL = 'https://github.com/soonpyopark';
 const $ = (selector) => document.querySelector(selector);
 
 const MAX_LOG_ROWS = 500;
@@ -45,6 +47,11 @@ let keywordsKey = '';
 const selectedKeywords = new Set();
 const hiddenActions = new Set();
 let logRows = 0;
+let logFollowing = true;
+let logPending = 0;
+let logIgnoreScroll = false;
+let logIgnoreTimer = 0;
+const LOG_STICK_PX = 8;
 let setupOpen = false;
 let exitOpen = false;
 
@@ -224,7 +231,6 @@ function applyState(next) {
   $('#btn-temp').disabled = state.status !== 'blocking';
   $('#version-badge').textContent = state.build_time ? `v${state.version} · 빌드 ${state.build_time}` : `v${state.version} · 소스 실행`;
   $('#admin-badge').classList.toggle('hidden', state.admin);
-  $('#dev-link').textContent = state.developer_url.replace(/^https?:\/\//, '');
   renderKeywords();
   renderBanners();
   if (!state.has_password) openSetup();
@@ -303,18 +309,54 @@ function renderLogFilters() {
           else hiddenActions.add(action);
           for (const row of document.querySelectorAll(`#log [data-action="${action}"]`)) row.classList.toggle('hidden', hiddenActions.has(action));
           renderLogFilters();
+          if (logFollowing) scrollLogToLatest();
         },
       });
     }),
   );
 }
 
+function logGap(log) {
+  return log.scrollHeight - log.scrollTop - log.clientHeight;
+}
+
+function holdLogScroll() {
+  logIgnoreScroll = true;
+  window.clearTimeout(logIgnoreTimer);
+  logIgnoreTimer = window.setTimeout(() => {
+    logIgnoreScroll = false;
+  }, 80);
+}
+
+function updateLogJump() {
+  const btn = $('#log-jump');
+  if (logFollowing) {
+    logPending = 0;
+    btn.classList.add('hidden');
+    return;
+  }
+  btn.textContent = logPending > 0 ? `↓ 새 로그 ${logPending}` : '↓ 최신 로그';
+  btn.classList.remove('hidden');
+}
+
+function followLog(on) {
+  logFollowing = on;
+  updateLogJump();
+}
+
+function scrollLogToLatest() {
+  const log = $('#log');
+  holdLogScroll();
+  log.scrollTop = log.scrollHeight;
+}
+
 function appendLogs(events) {
   const log = $('#log');
-  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
   const fragment = document.createDocumentFragment();
+  let visible = 0;
   for (const ev of events) {
     const action = LOG_ACTIONS.includes(ev.action) ? ev.action : 'ERROR';
+    if (!hiddenActions.has(action)) visible += 1;
     fragment.append(
       h(
         'div',
@@ -332,14 +374,21 @@ function appendLogs(events) {
   }
   $('#log-empty').classList.add('hidden');
   log.append(fragment);
+  holdLogScroll();
   while (logRows > MAX_LOG_ROWS) {
     const first = log.querySelector('[data-action]');
     if (!first) break;
+    const height = first.offsetHeight;
     first.remove();
     logRows -= 1;
+    if (!logFollowing && height) log.scrollTop = Math.max(0, log.scrollTop - height);
   }
   $('#log-count').textContent = String(logRows);
-  if (atBottom) log.scrollTop = log.scrollHeight;
+  if (logFollowing) scrollLogToLatest();
+  else if (visible) {
+    logPending += visible;
+    updateLogJump();
+  }
 }
 
 function clearLogs() {
@@ -347,6 +396,7 @@ function clearLogs() {
   logRows = 0;
   $('#log-count').textContent = '0';
   $('#log-empty').classList.remove('hidden');
+  followLog(true);
 }
 
 // ------------------------------------------------------------------ 연결 오버레이
@@ -465,6 +515,50 @@ async function showProxyStatus() {
     });
   infoModal('프록시 상태', pre, [h('button', { class: 'btn btn-soft', text: '새로고침', onclick: load })]);
   load();
+}
+
+async function checkUpdate() {
+  const btn = $('#btn-update');
+  if (btn.disabled) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '확인 중…';
+  try {
+    const res = await call('POST', '/api/update/check');
+    const message = (text) => h('p', { class: 'whitespace-pre-line text-sm text-slate-600', text });
+    if (res.error) {
+      infoModal('업데이트 확인', message(`업데이트 정보를 확인할 수 없습니다.\n\n${res.error}`), [
+        h('button', {
+          class: 'btn btn-soft',
+          text: '릴리스 페이지 열기',
+          onclick: () => bridge.openExternal(res.url || `${GITHUB_URL}/EduGuard/releases`),
+        }),
+      ]);
+      return;
+    }
+    if (res.available) {
+      if (state) {
+        state.update = { version: res.latest, url: res.url, notes: res.notes || '' };
+        renderBanners();
+      }
+      const lines = [`새 버전이 있습니다: v${res.latest}`, `현재 버전: v${res.current}`];
+      if (res.notes) lines.push('', res.notes);
+      infoModal('업데이트 확인', message(lines.join('\n')), [
+        h('button', { class: 'btn btn-soft', text: '다운로드 페이지 열기', onclick: () => bridge.openExternal(res.url) }),
+      ]);
+      return;
+    }
+    if (state) {
+      state.update = null;
+      renderBanners();
+    }
+    infoModal('업데이트 확인', message(`최신 버전입니다.\n\n현재 버전: v${res.current}`));
+  } catch (err) {
+    toast(err.message || String(err), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
 }
 
 function showVersionInfo() {
@@ -718,7 +812,21 @@ function bind() {
   $('#tool-services').addEventListener('click', () => guarded(() => call('POST', '/api/open', { target: 'services' })));
   $('#tool-version').addEventListener('click', showVersionInfo);
   $('#log-clear').addEventListener('click', clearLogs);
-  $('#dev-link').addEventListener('click', () => state && bridge.openExternal(state.developer_url));
+  const log = $('#log');
+  log.addEventListener('scroll', () => {
+    if (logIgnoreScroll) return;
+    followLog(logGap(log) <= LOG_STICK_PX);
+  }, { passive: true });
+  log.addEventListener('wheel', (e) => {
+    if (e.deltaY < 0 && log.scrollHeight > log.clientHeight + LOG_STICK_PX) followLog(false);
+  }, { passive: true });
+  $('#log-jump').addEventListener('click', () => {
+    followLog(true);
+    scrollLogToLatest();
+  });
+  $('#link-tistory').addEventListener('click', () => bridge.openExternal(BLOG_URL));
+  $('#link-github').addEventListener('click', () => bridge.openExternal(GITHUB_URL));
+  $('#btn-update').addEventListener('click', () => guarded(checkUpdate));
   $('#overlay-retry').addEventListener('click', async () => {
     showOverlay('엔진을 시작하는 중…', "관리자 권한 확인(UAC) 창이 뜨면 '예'를 선택해 주세요.", false);
     const res = await bridge.restartBackend();

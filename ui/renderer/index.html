@@ -21,9 +21,21 @@
         <span id="admin-badge" class="badge hidden bg-amber-50 text-amber-700 ring-1 ring-amber-600/20 ring-inset">
           관리자 권한 아님 · 현재 계정에만 적용
         </span>
-        <div class="ml-auto flex items-center gap-1 text-xs text-slate-500">
-          개발자
-          <button id="dev-link" class="font-medium text-indigo-600 hover:underline"></button>
+        <div class="ml-auto flex items-center gap-1">
+          <button id="link-tistory" type="button" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="note4all.tistory.com" aria-label="티스토리 블로그">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <circle cx="7.2" cy="7.2" r="2.15" fill="currentColor" />
+              <circle cx="12" cy="7.2" r="2.15" fill="currentColor" />
+              <circle cx="16.8" cy="7.2" r="2.15" fill="currentColor" />
+              <circle cx="12" cy="12" r="2.15" fill="currentColor" />
+              <circle cx="12" cy="16.8" r="2.15" fill="currentColor" />
+            </svg>
+          </button>
+          <button id="link-github" type="button" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="github.com/soonpyopark" aria-label="GitHub">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path fill="currentColor" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -56,7 +68,7 @@
             </div>
           </div>
 
-          <div class="card flex min-h-0 flex-1 flex-col">
+          <div class="card relative flex min-h-0 flex-1 flex-col">
             <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
               <h2 class="card-title">실시간 접속 로그</h2>
               <span id="log-count" class="badge bg-slate-100 text-slate-500">0</span>
@@ -66,6 +78,7 @@
             <div id="log" class="min-h-0 flex-1 overflow-y-auto px-4 py-2 font-mono text-xs leading-6 select-text">
               <div id="log-empty" class="py-10 text-center font-sans text-sm text-slate-400">아직 기록이 없습니다.</div>
             </div>
+            <button id="log-jump" type="button" class="btn btn-primary btn-sm absolute bottom-3 left-1/2 z-10 hidden -translate-x-1/2">↓ 최신 로그</button>
           </div>
         </section>
 
@@ -109,7 +122,10 @@
           <button id="tool-services" class="btn btn-soft btn-sm">🛠 Windows 서비스</button>
           <button id="tool-version" class="btn btn-soft btn-sm">ℹ 버전 정보</button>
         </div>
-        <button id="btn-exit" class="btn btn-danger-soft btn-sm ml-auto">⏻ 프로그램 종료</button>
+        <div class="ml-auto flex items-center gap-2">
+          <button id="btn-update" type="button" class="btn btn-sm bg-yellow-100 text-yellow-900 hover:bg-yellow-200">업데이트 확인</button>
+          <button id="btn-exit" class="btn btn-danger-soft btn-sm">⏻ 프로그램 종료</button>
+        </div>
       </footer>
     </div>
 

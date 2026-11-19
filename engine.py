@@ -455,6 +455,12 @@ class Engine:
                 self._log("GUARD", "시스템 프록시", "이전 실행 잔여 설정 감지 → 원래대로 복원")
                 self.audit("STALE_PROXY", "잔여 시스템 프록시 복원")
                 self._notify("이전 실행에 남은 프록시 설정을 복원했습니다.")
+                # 프록시가 켜진 채 부팅되면 StarPlayer 는 이미 연결 실패 상태다. 프로세스가 있는 것만으로는
+                # 복구되지 않으므로, 프록시를 지운 뒤에 같은 실행 파일을 다시 띄운다.
+                restarted = starplayer_ready.restart_if_running()
+                if restarted:
+                    self._log("GUARD", "StarPlayer", f"잔여 프록시로 기동한 플레이어 {restarted}개를 다시 시작")
+                    self._notify("StarPlayer 를 프록시가 없는 상태에서 다시 시작했습니다.")
             except Exception as e:
                 self._log("ERROR", "시스템 프록시", f"잔여 설정 복원 실패: {e}")
 

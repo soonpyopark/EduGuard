@@ -222,6 +222,19 @@ class StarPlayerReadyTest(unittest.TestCase):
         self.assertFalse(starplayer_ready.is_starplayer_ready(
             process_names=["chrome.exe", "notepad.exe"]))
 
+    def test_restart_relaunches_unique_executables(self):
+        import starplayer_ready
+        killed = []
+        launched = []
+        count = starplayer_ready.restart_processes(
+            [(11, r"C:\StarPlayer\StarPlayer.exe"), (12, r"C:\StarPlayer\StarPlayer.exe"), (13, "")],
+            killer=killed.append,
+            launcher=launched.append,
+        )
+        self.assertEqual(killed, [11, 12, 13])
+        self.assertEqual(launched, [r"C:\StarPlayer\StarPlayer.exe"])
+        self.assertEqual(count, 1)
+
     def test_parse_tasklist_csv(self):
         import starplayer_ready
         sample = '"StarPlayer.exe","1234","Console","1","12,345 K"\r\n"chrome.exe","1","Console","1","1 K"\r\n'
@@ -673,10 +686,20 @@ class EngineTest(unittest.TestCase):
         engine.guard.stop()
 
     def test_stale_proxy_cleared_on_start(self):
+        import starplayer_ready
         engine, _, _ = make_engine(self.dir.name, stale=True)
-        engine.clear_stale_proxy_if_needed()
+        restarted = []
+        original = starplayer_ready.restart_if_running
+        starplayer_ready.restart_if_running = lambda: restarted.append(True) or 1
+        try:
+            engine.clear_stale_proxy_if_needed()
+        finally:
+            starplayer_ready.restart_if_running = original
         self.assertEqual(engine.sysproxy.disable_calls, 1)
-        self.assertTrue(any(e.get("host") == "시스템 프록시" for e in engine.poll()["events"]))
+        self.assertEqual(restarted, [True])
+        hosts = [e.get("host") for e in engine.poll()["events"]]
+        self.assertIn("시스템 프록시", hosts)
+        self.assertIn("StarPlayer", hosts)
 
     def test_poll_returns_only_new_events(self):
         engine, _, _ = make_engine(self.dir.name, suppress_repeated_logs=False)

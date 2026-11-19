@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 
+import starplayer_ready
 import startup
 import watchdog
 from api_server import ApiServer
@@ -160,6 +161,7 @@ def clear_stale_proxy_cli() -> int:
         sp = SystemProxy(BACKUP_PATH)
         if sp.has_stale_proxy():
             sp.disable()
+            starplayer_ready.restart_if_running()
         return 0
     except Exception:
         return 1

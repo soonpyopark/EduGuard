@@ -26,6 +26,7 @@ dist/
 build_info.py
 msi/*.msi
 msi/*.wixpdb
+msi/allow.json
 
 # 운영체제/편집기 임시 파일
 .DS_Store

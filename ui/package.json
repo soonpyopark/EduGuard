@@ -1,7 +1,7 @@
 {
   "name": "eduguard-ui",
   "productName": "EduGuard",
-  "version": "1.0.0-5",
+  "version": "1.0.0-6",
   "description": "EduGuard 학습 사이트 전용 인터넷 제어 - Electron UI",
   "main": "main.js",
   "private": true,

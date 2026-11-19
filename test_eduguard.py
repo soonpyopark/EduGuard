@@ -124,7 +124,7 @@ class ConfigStoreTest(unittest.TestCase):
         self.assertFalse(c.remote_support_enabled)
         self.assertTrue(c.suppress_repeated_logs)
         self.assertEqual(c.repeat_log_window_seconds, 30)
-        self.assertEqual(c.block_start_delay_seconds, 90)
+        self.assertEqual(c.block_start_delay_seconds, 20)
         self.assertTrue(c.wait_for_starplayer)
         self.assertEqual(c.starplayer_wait_timeout_seconds, 120)
         c.set_password("1234")

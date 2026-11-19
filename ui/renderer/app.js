@@ -643,7 +643,7 @@ const SETTINGS_SCHEMA = [
     tab: '차단',
     items: [
       { key: 'auto_start', type: 'bool', label: '프로그램이 시작되면 자동으로 차단 시작', hint: "끄면 실행 후 '차단 시작' 버튼을 눌러야 차단됩니다." },
-      { key: 'block_start_delay_seconds', type: 'number', min: 0, max: 600, unit: '초', label: '자동 차단 시작 지연', hint: 'StarPlayer가 먼저 기동할 시간을 줍니다. 0 ~ 600초, 기본 90초' },
+      { key: 'block_start_delay_seconds', type: 'number', min: 0, max: 600, unit: '초', label: '자동 차단 시작 지연', hint: 'StarPlayer가 먼저 기동할 시간을 줍니다. 0 ~ 600초, 기본 20초' },
       { key: 'wait_for_starplayer', type: 'bool', label: '자동 차단 전 StarPlayer 준비 확인', hint: 'StarPlayer/Axissoft 프로세스가 보일 때까지 차단을 미룹니다. 시간 초과 시 강제로 시작합니다.' },
       { key: 'starplayer_wait_timeout_seconds', type: 'number', min: 0, max: 600, unit: '초', label: 'StarPlayer 추가 대기', hint: '지연 이후에도 미기동이면 이 시간까지 더 기다립니다. 0 ~ 600초, 기본 120초' },
       { key: 'schedule_enabled', type: 'bool', label: '시간대 스케줄 사용', hint: '아래 시간대 안에서는 자동 차단, 밖에서는 자동 해제됩니다. 일시 해제 중이면 일시 해제가 우선입니다.' },

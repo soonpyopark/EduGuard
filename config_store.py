@@ -154,7 +154,7 @@ class ConfigStore:
             "remote_support_enabled": False,
             "suppress_repeated_logs": True,
             "repeat_log_window_seconds": 30,
-            "block_start_delay_seconds": 90,       # 자동 차단 전 최소 대기(초). StarPlayer 기동 여유
+            "block_start_delay_seconds": 20,       # 자동 차단 전 최소 대기(초). StarPlayer 기동 여유
             "wait_for_starplayer": True,           # 자동 차단 전 StarPlayer 준비 확인
             "starplayer_wait_timeout_seconds": 120,  # 지연 후 StarPlayer 대기 최대 시간
             "pw_salt": "",
@@ -454,7 +454,7 @@ class ConfigStore:
     @property
     def block_start_delay_seconds(self) -> int:
         with self._lock:
-            return self._bounded_int("block_start_delay_seconds", 90, 0, 600)
+            return self._bounded_int("block_start_delay_seconds", 20, 0, 600)
 
     @property
     def wait_for_starplayer(self) -> bool:

@@ -1,6 +1,6 @@
 {
   "name": "eduguard",
-  "version": "1.0.0-6",
+  "version": "1.0.0-7",
   "private": true,
   "description": "EduGuard 빌드 진입점 (npm run ...)",
   "scripts": {

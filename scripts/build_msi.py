@@ -178,6 +178,7 @@ def write_wxs(path: Path, app_dir: Path) -> None:
             <StandardDirectory Id="ProgramMenuFolder">
               <Directory Id="ApplicationProgramsFolder" Name="{PROJECT_NAME}" />
             </StandardDirectory>
+            <StandardDirectory Id="DesktopFolder" />
 
             <ComponentGroup Id="AppComponents" Directory="INSTALLFOLDER">
               <Component Id="MainExecutable" Guid="*">
@@ -191,6 +192,19 @@ def write_wxs(path: Path, app_dir: Path) -> None:
                 <RemoveFolder Id="RemoveApplicationProgramsFolder"
                               Directory="ApplicationProgramsFolder"
                               On="uninstall" />
+              </Component>
+              <Component Id="DesktopShortcut" Guid="*" Directory="DesktopFolder">
+                <Shortcut Id="DesktopShortcutItem"
+                          Name="{PROJECT_NAME}"
+                          Target="[INSTALLFOLDER]{PROJECT_NAME}.exe"
+                          WorkingDirectory="INSTALLFOLDER"
+                          Icon="AppIcon.ico" />
+                <RegistryValue Root="HKLM"
+                               Key="Software\\{MANUFACTURER}\\{PROJECT_NAME}"
+                               Name="DesktopShortcut"
+                               Type="integer"
+                               Value="1"
+                               KeyPath="yes" />
               </Component>
               <Component Id="CoreExecutable" Guid="*">
                 <File Id="EduGuardCoreExe" Source="{app_dir / f'{CORE_NAME}.exe'}" KeyPath="yes" />

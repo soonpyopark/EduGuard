@@ -34,7 +34,7 @@ def parse_version(value: str) -> tuple:
     for chunk in value.split("."):
         digits = "".join(ch for ch in chunk if ch.isdigit())
         parts.append(int(digits or "0"))
-    return tuple(parts + [0] * (3 - len(parts)))
+    return tuple((parts + [0, 0, 0, 0])[:4])
 
 
 def is_newer(candidate: str, current: str = APP_VERSION) -> bool:

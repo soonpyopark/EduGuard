@@ -1,0 +1,45 @@
+---
+description: "배포해줘" 요청 시 따를 절차 (버전 올리기 → 빌드 → 검증 → 커밋 → 태그·릴리스 → 이전 태그/릴리스 삭제)
+alwaysApply: true
+---
+
+# 배포해줘
+
+사용자가 **"배포해줘"** 라고 하면 아래를 처음부터 끝까지 수행한다. 작업 위치는 저장소 루트. Tiny PDF Editor - neo 와 같은 절차이며, EduGuard 는 Windows MSI 만 만든다.
+
+## 표기 규칙
+
+| 대상 | 형식 | 예 |
+| --- | --- | --- |
+| 앱 UI · `version.py` `APP_VERSION` · MSI ProductVersion | `1.0.0.N` (표시는 `v1.0.0.N`) | `v1.0.0.3` |
+| Git 태그 · 릴리스 태그 | `v1.0.0-N` | `v1.0.0-3` |
+| 릴리스 제목 | `v1.0.0.N` | `v1.0.0.3` |
+| `package.json` · `ui/package.json` version | `1.0.0-N` | `1.0.0-3` |
+
+`npm run version:bump` 가 `version.py`, 루트 `package.json`, `ui/package.json`, `ui/package-lock.json` 을 함께 바꾼다. 태그는 `version.py` 의 `app_git_tag()` 가 계산한다. 손으로 따로 고치지 않는다. 끝자리는 0–9 이고 `1.0.0.9` 다음은 `1.0.1.0` 이다.
+
+## 순서
+
+1. **버전 올리기** — `npm run version:bump`. 사용자가 버전을 지정하면 `-- --set=1.1.0.0`.
+2. **빌드** — `npm run build:update_all` (엔진 → Tailwind → Electron → MSI). 산출물은 `msi/EduGuard_<버전>_<YYMMDD_HHMMSS>.msi`.
+3. **검증** — `python -m unittest discover -s . -p "test_*.py"`. 실패하면 배포하지 않는다. 원인을 고치고 2번부터 다시.
+4. **커밋** — 버전 올림과 이번 변경. 작업 트리를 깨끗하게 만든다 (`publish:release` 가 요구한다). 사용자가 커밋을 요청한 것으로 본다.
+5. **게시** — `npm run publish:release -- --notes-file=<노트.md>`
+   - 태그 `v1.0.0-N` 생성 → `main` 과 태그 push → GitHub Release 생성 → `.msi` 업로드 (`version.py` 의 `UPDATE_REPO`)
+   - 새 릴리스 본문은 이번 변경 + 파일 목록 뒤에, **직전 릴리스 본문의 변경(및 기존 이력)을 「이전 버전 이력」으로 자동 이어 붙인다**. 노트를 손으로 복붙하지 않는다.
+   - 업로드가 확인된 뒤에만 **이전 릴리스와 이전 버전 태그를 모두 삭제** (원격 + 로컬).
+   - 삭제한 태그와 커밋 SHA 는 `.cache/logs/publish-release.log` 에 남는다 (복구용).
+   - 먼저 `-- --dry-run` 으로 계획을 확인해도 된다.
+6. **보고** — 릴리스 URL, 올라간 MSI, 지운 태그/릴리스 수, 테스트 결과를 알린다.
+
+릴리스 노트(`--notes-file`)는 `- ` 줄바꿈 목록으로, **이번 버전**에서 바뀐 사용자 관점 내용만 쓴다. 이전 버전 이력은 게시 스크립트가 붙인다.
+
+EduGuard 는 Windows 전용이다. macOS 산출물은 만들지 않는다.
+
+## 하지 말 것
+
+- 테스트가 통과하기 전에 이전 릴리스·태그를 지우지 않는다.
+- 버전 표기를 한쪽(점/하이픈)으로 통일하지 않는다. 태그는 하이픈, 앱 표시는 점이다.
+- `main` 이 아닌 브랜치, 커밋하지 않은 변경이 있는 상태로 게시하지 않는다.
+- `--keep-previous` 는 사용자가 요청할 때만 쓴다.
+- 사용자가 "배포해줘"라고 하기 전에는 이 절차(버전 올림, 태그, 릴리스, 이전 태그 삭제)를 시작하지 않는다.

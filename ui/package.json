@@ -1,0 +1,25 @@
+{
+  "name": "eduguard-ui",
+  "productName": "EduGuard",
+  "version": "1.0.0-3",
+  "description": "EduGuard 학습 사이트 전용 인터넷 제어 - Electron UI",
+  "main": "main.js",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "author": "EduGuard",
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/input.css -o ./renderer/styles.css --minify",
+    "watch:css": "tailwindcss -i ./src/input.css -o ./renderer/styles.css --watch",
+    "dev": "node ../scripts/dev-process.mjs start",
+    "dev:stop": "node ../scripts/dev-process.mjs stop",
+    "dev:restart": "node ../scripts/dev-process.mjs restart",
+    "start": "npm run build:css && electron .",
+    "package": "npm run build:css && node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "@tailwindcss/cli": "^4.3.5",
+    "electron": "^45.3.4",
+    "tailwindcss": "^4.3.5"
+  }
+}

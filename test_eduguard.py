@@ -340,6 +340,8 @@ class UpdateCheckerTest(unittest.TestCase):
         self.assertTrue(update_checker.is_newer("1.1.0", "1.0.9"))
         self.assertFalse(update_checker.is_newer("1.0.0", "1.0.0"))
         self.assertFalse(update_checker.is_newer("0.9.9", "1.0.0"))
+        self.assertTrue(update_checker.is_newer("1.0.0.3", "1.0.0.2"))
+        self.assertFalse(update_checker.is_newer("1.0.0.0", "1.0.0"))
 
     def test_no_manifest_url_skips(self):
         import update_checker
@@ -347,6 +349,12 @@ class UpdateCheckerTest(unittest.TestCase):
 
 
 class VersionDisplayTest(unittest.TestCase):
+    def test_semver_and_git_tag(self):
+        import version
+        self.assertEqual(version.app_semver("1.0.0.2"), "1.0.0-2")
+        self.assertEqual(version.app_git_tag("1.0.0.2"), "v1.0.0-2")
+        self.assertEqual(version.app_semver("1.0.0"), "1.0.0")
+
     def test_version_display_source(self):
         import version
         # 빌드 산출물이 없는 소스 실행이면 빌드 시각 문구가 없다.
@@ -507,6 +515,255 @@ class TrustedLocalHostTest(unittest.TestCase):
         self.assertTrue(_is_trusted_local_host("localhost.axissoft.co.kr", TRUSTED_LOCAL_HOSTS))
         self.assertTrue(_is_trusted_local_host("LOCALHOST.AXISSOFT.CO.KR.", TRUSTED_LOCAL_HOSTS))
         self.assertFalse(_is_trusted_local_host("localhost.example.com", TRUSTED_LOCAL_HOSTS))
+
+
+class FakeProxy:
+    def __init__(self):
+        self.filter = KeywordFilter(PRESET)
+        self.port = 8899
+        self.allowed_count = 0
+        self.blocked_count = 0
+        self.running = False
+        self.block_message = ""
+
+    def start(self):
+        self.running = True
+
+    def stop(self):
+        self.running = False
+
+    def set_block_message(self, message):
+        self.block_message = message
+
+
+class FakeSysProxy:
+    def __init__(self, stale=False):
+        self.enabled_port = None
+        self.stale = stale
+        self.disable_calls = 0
+
+    def enable(self, port):
+        self.enabled_port = port
+
+    def disable(self):
+        self.enabled_port = None
+        self.stale = False
+        self.disable_calls += 1
+
+    def enforce(self):
+        return False
+
+    def has_stale_proxy(self):
+        return self.stale
+
+    def status_report(self, **kwargs):
+        return f"report blocking={kwargs.get('app_blocking')}"
+
+
+class FakeStartup:
+    def __init__(self):
+        self.registered = False
+
+    def is_registered(self):
+        return self.registered
+
+    def register(self):
+        self.registered = True
+        return True, ""
+
+    def unregister(self):
+        self.registered = False
+        return True, ""
+
+    def register_cleanup(self):
+        return True, ""
+
+    def launch_command(self):
+        return "EduGuardCore.exe", []
+
+
+class FakeClock:
+    def __init__(self, now=1_000_000.0):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+
+def make_engine(tmpdir, *, password="1234", starplayer=True, stale=False, **settings):
+    from engine import Engine
+    cfg = ConfigStore(os.path.join(tmpdir, "config.json"))
+    if password:
+        cfg.set_password(password)
+    defaults = {"audit_enabled": False, "block_start_delay_seconds": 0}
+    defaults.update(settings)
+    cfg.set_settings(**defaults)
+    clock = FakeClock()
+    ready = {"value": starplayer}
+    engine = Engine(
+        cfg, tmpdir, proxy=FakeProxy(), sysproxy=FakeSysProxy(stale=stale), admin=True,
+        starplayer_check=lambda: ready["value"], startup_module=FakeStartup(), clock=clock,
+    )
+    return engine, clock, ready
+
+
+class EngineTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_block_start_stop_requires_password(self):
+        from engine import AuthError
+        engine, _, _ = make_engine(self.dir.name)
+        engine.start_blocking()
+        self.assertEqual(engine.status(), "blocking")
+        self.assertEqual(engine.sysproxy.enabled_port, 8899)
+        with self.assertRaises(AuthError):
+            engine.stop_blocking("wrong")
+        self.assertEqual(engine.status(), "blocking")
+        engine.stop_blocking("1234")
+        self.assertEqual(engine.status(), "off")
+        self.assertIsNone(engine.sysproxy.enabled_port)
+        engine.guard.stop()
+
+    def test_password_lockout(self):
+        from engine import LockedError
+        engine, clock, _ = make_engine(self.dir.name, password_max_fails=2, password_lockout_seconds=30)
+        with self.assertRaises(Exception):
+            engine.verify("x", "test")
+        with self.assertRaises(LockedError):
+            engine.verify("x", "test")
+        with self.assertRaises(LockedError):
+            engine.verify("1234", "test")  # 잠금 중에는 맞는 비밀번호도 거부
+        clock.now += 31
+        engine.verify("1234", "test")
+
+    def test_temp_unlock_expires_and_reblocks(self):
+        engine, clock, _ = make_engine(self.dir.name)
+        engine.start_blocking()
+        engine.temp_unlock("1234", 5)
+        self.assertEqual(engine.status(), "temp_unlock")
+        self.assertEqual(engine.state()["temp_unlock_remaining"], 5)
+        clock.now += 5 * 60 + 1
+        engine.tick()
+        self.assertEqual(engine.status(), "blocking")
+        engine.guard.stop()
+
+    def test_auto_block_waits_for_starplayer(self):
+        engine, clock, ready = make_engine(self.dir.name, starplayer=False, starplayer_wait_timeout_seconds=60)
+        engine._schedule_auto_block()
+        engine.tick()
+        self.assertEqual(engine.status(), "waiting")
+        ready["value"] = True
+        clock.now += 6
+        engine.tick()
+        self.assertEqual(engine.status(), "blocking")
+        engine.guard.stop()
+
+    def test_auto_block_forced_after_timeout(self):
+        engine, clock, _ = make_engine(self.dir.name, starplayer=False, starplayer_wait_timeout_seconds=10)
+        engine._schedule_auto_block()
+        engine.tick()
+        self.assertEqual(engine.status(), "waiting")
+        clock.now += 11
+        engine.tick()
+        self.assertEqual(engine.status(), "blocking")
+        engine.guard.stop()
+
+    def test_stale_proxy_cleared_on_start(self):
+        engine, _, _ = make_engine(self.dir.name, stale=True)
+        engine.clear_stale_proxy_if_needed()
+        self.assertEqual(engine.sysproxy.disable_calls, 1)
+        self.assertTrue(any(e.get("host") == "시스템 프록시" for e in engine.poll()["events"]))
+
+    def test_poll_returns_only_new_events(self):
+        engine, _, _ = make_engine(self.dir.name, suppress_repeated_logs=False)
+        engine._log("GUARD", "a", "1")
+        first = engine.poll(0)
+        engine._log("GUARD", "b", "2")
+        second = engine.poll(first["last_id"])
+        self.assertEqual([e["host"] for e in second["events"]], ["b"])
+        self.assertEqual(engine.poll(10_000)["last_id"], second["last_id"])  # 엔진 재시작 후 큰 번호면 처음부터
+
+    def test_keywords_and_settings(self):
+        engine, _, _ = make_engine(self.dir.name)
+        engine.add_keyword("1234", "khanacademy")
+        self.assertTrue(engine.test_domain("https://www.khanacademy.org/math")["allowed"])
+        engine.remove_keywords("1234", ["khanacademy"])
+        self.assertFalse(engine.test_domain("www.khanacademy.org")["allowed"])
+        loaded = engine.get_settings("1234")["settings"]
+        self.assertEqual(loaded["port"], 8899)
+        engine.save_settings("1234", {"run_at_startup": True, "temp_unlock_minutes": "45", "unknown": 1})
+        self.assertEqual(engine.cfg.temp_unlock_minutes, 45)
+        self.assertTrue(engine._startup.registered)
+
+    def test_setup_password_only_once(self):
+        from engine import EngineError
+        engine, _, _ = make_engine(self.dir.name, password=None)
+        self.assertFalse(engine.state()["has_password"])
+        engine.setup_password("abcd")
+        self.assertTrue(engine.state()["has_password"])
+        with self.assertRaises(EngineError):
+            engine.setup_password("efgh")
+
+    def test_exit_restores_proxy(self):
+        engine, _, _ = make_engine(self.dir.name)
+        engine.start_blocking()
+        engine.request_exit("1234")
+        self.assertTrue(engine.exit_requested.is_set())
+        self.assertIsNone(engine.sysproxy.enabled_port)
+
+
+class ApiServerTest(unittest.TestCase):
+    def setUp(self):
+        from api_server import ApiServer
+        self.dir = tempfile.TemporaryDirectory()
+        self.engine, _, _ = make_engine(self.dir.name)
+        self.server = ApiServer(self.engine, "secret-token")
+        self.server.start()
+
+    def tearDown(self):
+        self.server.stop()
+        self.engine.guard.stop()
+        self.dir.cleanup()
+
+    def _request(self, method, path, body=None, token="secret-token", host=None):
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.port, timeout=5)
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["X-EduGuard-Token"] = token
+        if host:
+            headers["Host"] = host
+        conn.request(method, path, body=json.dumps(body) if body is not None else None, headers=headers)
+        resp = conn.getresponse()
+        data = json.loads(resp.read().decode("utf-8"))
+        conn.close()
+        return resp.status, data
+
+    def test_rejects_missing_token_and_foreign_host(self):
+        self.assertEqual(self._request("GET", "/api/ping", token=None)[0], 403)
+        self.assertEqual(self._request("GET", "/api/ping", token="nope")[0], 403)
+        self.assertEqual(self._request("GET", "/api/ping", host="evil.example:80")[0], 403)
+
+    def test_block_flow_over_http(self):
+        status, data = self._request("POST", "/api/block/start", {})
+        self.assertEqual(status, 200)
+        self.assertEqual(self._request("GET", "/api/poll?since=0")[1]["state"]["status"], "blocking")
+        status, data = self._request("POST", "/api/block/stop", {"password": "bad"})
+        self.assertEqual(status, 401)
+        self.assertFalse(data["ok"])
+        status, _ = self._request("POST", "/api/block/stop", {"password": "1234"})
+        self.assertEqual(status, 200)
+        self.assertEqual(self._request("GET", "/api/poll")[1]["state"]["status"], "off")
+
+    def test_domain_test_and_unknown_route(self):
+        status, data = self._request("POST", "/api/test-domain", {"domain": "www.ebs.co.kr"})
+        self.assertEqual(status, 200)
+        self.assertTrue(data["allowed"])
+        self.assertEqual(self._request("GET", "/api/nope")[0], 404)
 
 
 if __name__ == "__main__":

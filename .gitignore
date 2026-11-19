@@ -9,7 +9,15 @@ config.json
 config.json.bak
 proxy_backup.json
 watchdog_normal_exit.flag
+runtime.json
 logs/
+
+# Electron UI
+ui/node_modules/
+ui/renderer/styles.css
+
+# 배포 스크립트 기록 (삭제한 태그·커밋 SHA)
+.cache/
 
 # 빌드 산출물
 build/

@@ -1,0 +1,14 @@
+{
+  "name": "eduguard",
+  "version": "1.0.0-3",
+  "private": true,
+  "description": "EduGuard 빌드 진입점 (npm run ...)",
+  "scripts": {
+    "dev": "node scripts/dev-process.mjs start",
+    "dev:stop": "node scripts/dev-process.mjs stop",
+    "dev:restart": "node scripts/dev-process.mjs restart",
+    "build:update_all": "python scripts/build_msi.py",
+    "version:bump": "node scripts/bump-version.mjs",
+    "publish:release": "node scripts/publish-release.mjs"
+  }
+}
